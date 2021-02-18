@@ -11,8 +11,7 @@ type Balance = u128;
 type EpochHeight = number;
 type WrappedTimestamp = u64;
 
-
-// Generic types //
+// NOTE :: not sure if this is the right way to do this.. but the only union types available in as are | null 
 type Option<T> = T | None;
 type None = null;
 
@@ -24,8 +23,14 @@ const KEY_VOTING_CONTRACT: StorageKey = "v";
 // Main Contract Class //
 
 @nearBindgen
+abstract class BaseContract {
+  abstract persist(): void
+  constructor(readonly key: StorageKey){}
+}
+
+@nearBindgen
 // @ts-ignore
-export class VotingContract {
+export class VotingContract extends BaseContract {
 
   votes: Map<AccountId, Balance>
   total_voted_stake: Balance
@@ -114,14 +119,12 @@ export class VotingContract {
   }
 
   // AS-sdk extras //
-
-  private _key: StorageKey;
   
   // load contract from storage
-  constructor(_key: StorageKey) {
-    this._key = _key;
+  constructor() {
+    super(KEY_VOTING_CONTRACT);
     
-    let state = storage.get<VotingContract>(this._key);
+    let state = storage.get<VotingContract>(this.key);
     if (state) {
       this.votes = state.votes;
       this.total_voted_stake = state.total_voted_stake;
@@ -132,7 +135,7 @@ export class VotingContract {
 
   // Persist the contract to account storage
   persist() {
-    storage.set<VotingContract>(this._key, this);
+    storage.set<VotingContract>(this.key, this);
   }
 
 }
@@ -154,20 +157,20 @@ export function fallback() {
 @exportAs("new")
 export function main() {
   assert(!storage.hasKey(KEY_VOTING_CONTRACT), "The contract is already initialized");
-  let contract = new VotingContract(KEY_VOTING_CONTRACT);
+  let contract = new VotingContract();
   contract.persist();
 }
 
 /// Ping to update the votes according to current stake of validators.
 export function ping() {
-  let contract = new VotingContract(KEY_VOTING_CONTRACT);
+  let contract = new VotingContract();
   contract.ping();
   contract.persist();
 }
 
 /// Check whether the voting has ended.
 export function check_result() {
-  let contract = new VotingContract(KEY_VOTING_CONTRACT);
+  let contract = new VotingContract();
   contract.check_result();
   contract.persist();
 }
@@ -175,14 +178,14 @@ export function check_result() {
 /// Method for validators to vote or withdraw the vote.
 /// Votes for if `is_vote` is true, or withdraws the vote if `is_vote` is false.
 export function vote(is_vote: bool) {
-  let contract = new VotingContract(KEY_VOTING_CONTRACT);
+  let contract = new VotingContract();
   contract.vote(is_vote);
   contract.persist();
 }
 
 /// Get the timestamp of when the voting finishes. `None` means the voting hasn't ended yet
 export function get_result(): Option<WrappedTimestamp> {
-  let contract = new VotingContract(KEY_VOTING_CONTRACT);
+  let contract = new VotingContract();
   return contract.get_result();
 }
 
@@ -190,7 +193,7 @@ export function get_result(): Option<WrappedTimestamp> {
 /// Note: as a view method, it doesn't recompute the active stake. May need to call `ping` to
 /// update the active stake.
 export function get_total_voted_stake(): [u128, u128] {
-  let contract = new VotingContract(KEY_VOTING_CONTRACT);
+  let contract = new VotingContract();
   return contract.get_total_voted_stake();
 }
 
