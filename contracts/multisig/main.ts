@@ -3,13 +3,9 @@ import {
   context,
   env,
   storage,
-  PersistentVector,
   base58,
   logging,
-  ContractPromise,
   ContractPromiseBatch,
-  ContractPromiseResult,
-
 } from 'near-sdk-as';
 
 // NEAR types //
@@ -229,12 +225,12 @@ export class MultiSigContract extends BaseContract {
         case ActionType.CreateAccount: {
           promise = promise.create_account();
         }
-          
-        case ActionType.DeployContract:
+        case ActionType.DeployContract: {
           let {
             code
           } = (action as DeployContractAction)
           promise = promise.deploy_contract(code);
+        }
         case ActionType.AddKey: {
           let {
             public_key,
