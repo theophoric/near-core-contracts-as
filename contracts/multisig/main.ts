@@ -22,7 +22,7 @@ type None = null;
 
 // STORAGE //
 type StorageKey = string;
-const KEY_MULTI_SIG_CONTRACT: StorageKey = "ms";
+const KEY_MULTI_SIG_CONTRACT: StorageKey = "multi_sig_contract";
 
 
 const DEFAULT_ALLOWANCE: u128 = u128.Zero;
@@ -145,16 +145,39 @@ export class MultiSigRequestWithSigner {
   added_timestamp: u64
 }
 
-@nearBindgen
-abstract class BaseContract {
-  abstract persist(): void
-  constructor(readonly key: StorageKey) {}
-}
+// @nearBindgen
+// abstract class BaseContract {
+//   abstract persist(): void
+//   constructor(readonly key: StorageKey) {}
+// }
 /*****************************
  * MAIN CONTRACT CLASS
  ***************************** */
 @nearBindgen
-export class MultiSigContract extends BaseContract {
+export class MultiSigContract {
+
+  // singleton
+  private static instance: MultiSigContract;
+
+  // disable construction outside of "MultiSigContract.load()"
+  private constructor() {}
+
+  // storage key used for persisting contract data
+  static readonly key: StorageKey = KEY_MULTI_SIG_CONTRACT;
+
+  // singleton initializer
+  static load(): MultiSigContract {
+    if (!this.instance) {
+      this.instance = storage.get<MultiSigContract>(this.key) || MultiSigContract.load();
+    }
+    return this.instance;
+  }
+  
+  // instance method for persisting the contract to account storage
+  persist() {
+    storage.set<MultiSigContract>(MultiSigContract.key, this);
+  }
+  
   num_confirmations: u32
   request_nonce: RequestId
   requests: Map < RequestId,
@@ -163,23 +186,6 @@ export class MultiSigContract extends BaseContract {
   num_requests_pk: Map < PublicKey, u32 >
   // per_key
   active_requests_limit: u32
-
-  constructor() {
-    super(KEY_MULTI_SIG_CONTRACT)
-    let state = storage.get < MultiSigContract > (this.key)
-    if (state) {
-      this.num_confirmations = state.num_confirmations;
-      this.request_nonce = state.request_nonce;
-      this.requests = state.requests;
-      this.confirmations = state.confirmations;
-      this.num_requests_pk = state.num_requests_pk;
-      this.active_requests_limit = state.active_requests_limit;
-    }
-  }
-
-  persist() {
-    storage.set < MultiSigContract > (this.key, this);
-  }
 
   add_request(request: MultiSigRequest): RequestId {
     assert(
@@ -403,31 +409,32 @@ export function fallback() {
 @exportAs("new")
 export function main() {
   assert(!storage.hasKey(KEY_MULTI_SIG_CONTRACT), "Already initialized");
-
+  let contract = MultiSigContract.load();
+  contract.persist();
 }
 
 export function add_request(request: MultiSigRequest): RequestId {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   let result = contract.add_request(request);
   contract.persist();
   return result;
 }
 
 export function add_request_and_confirm(request: MultiSigRequest): RequestId {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   let result = contract.add_request_and_confirm(request);
   contract.persist();
   return result;
 }
 
 export function delete_request(request_id: RequestId) {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   contract.delete_request(request_id);
   contract.persist();
 }
 
 export function execute_request(request: MultiSigRequest): ContractPromiseBatch  {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   let result = contract.execute_request(request);
   contract.persist();
   return result;
@@ -436,7 +443,7 @@ export function execute_request(request: MultiSigRequest): ContractPromiseBatch 
 /// Confirm given request with given signing key.
 /// If with this, there has been enough confirmation, a promise with request will be scheduled.
 export function confirm(request_id: RequestId): ContractPromiseBatch {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   let result = contract.confirm(request_id);
   contract.persist();
   return result;
@@ -448,7 +455,7 @@ Helper methods
 
 // removes request, removes confirmations and reduces num_requests_pk - used in delete, delete_key, and confirm
 export function remove_request(request_id: RequestId): MultiSigRequest {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   let result = contract.remove_request(request_id);
   contract.persist();
   return result;
@@ -460,32 +467,32 @@ View methods
 ********************************/
 
 export function get_request(request_id: RequestId): MultiSigRequest {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   return contract.get_request(request_id);
 }
 
 export function get_num_requests_pk(public_key: PublicKey): u32 {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   return contract.get_num_requests_pk(public_key);
 }
 
 export function list_request_ids(): Array<RequestId> {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   return contract.list_request_ids();
 }
 
 export function get_confirmations(request_id: RequestId) : Array<PublicKey> {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   let result = contract.get_confirmations(request_id);
   return result;
 }
 export function get_num_confirmations(): u32  {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   let result = contract.get_num_confirmations();
   return result;
 }
 export function get_request_nonce(): u32 {
-  let contract = new MultiSigContract();
+  let contract = MultiSigContract.load();
   let result = contract.get_request_nonce();
   return result;
 }
