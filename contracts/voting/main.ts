@@ -3,6 +3,7 @@ import {
   context,
   env,
   storage,
+  Storage,
 } from 'near-sdk-as'
 
 // NEAR types //
@@ -17,20 +18,43 @@ type None = null;
 
 // STORAGE //
 type StorageKey = string;
-const KEY_VOTING_CONTRACT: StorageKey = "v";
+const KEY_VOTING_CONTRACT: StorageKey = "voting_contract";
 
 
 // Main Contract Class //
 
-@nearBindgen
-abstract class BaseContract {
-  abstract persist(): void
-  constructor(readonly key: StorageKey){}
-}
+// @nearBindgen
+// abstract class BaseContract {
+//   abstract persist(): void;
+// }
 
 @nearBindgen
 // @ts-ignore
-export class VotingContract extends BaseContract {
+export class VotingContract {
+
+  // singleton
+  private static instance: VotingContract;
+
+  // disable construction outside of "VotingContract.load()"
+  private constructor() {}
+
+  // storage key used for persisting contract data
+  static readonly key: StorageKey = KEY_VOTING_CONTRACT;
+
+  // singleton initializer
+  static load(): VotingContract {
+    if (!this.instance) {
+      this.instance = storage.get<VotingContract>(this.key) || new VotingContract();
+    }
+    return this.instance;
+  }
+  
+  // instance method for persisting the contract to account storage
+  persist() {
+    storage.set<VotingContract>(VotingContract.key, this);
+  }
+
+  // rest of the class is basically the same as rust version
 
   votes: Map<AccountId, Balance>
   total_voted_stake: Balance
@@ -118,25 +142,7 @@ export class VotingContract extends BaseContract {
     return this.votes;
   }
 
-  // AS-sdk extras //
-  
-  // load contract from storage
-  constructor() {
-    super(KEY_VOTING_CONTRACT);
-    
-    let state = storage.get<VotingContract>(this.key);
-    if (state) {
-      this.votes = state.votes;
-      this.total_voted_stake = state.total_voted_stake;
-      this.result = state.result
-      this.last_epoch_height = state.last_epoch_height;
-    }
-  }
 
-  // Persist the contract to account storage
-  persist() {
-    storage.set<VotingContract>(this.key, this);
-  }
 
 }
 
@@ -157,20 +163,20 @@ export function fallback() {
 @exportAs("new")
 export function main() {
   assert(!storage.hasKey(KEY_VOTING_CONTRACT), "The contract is already initialized");
-  let contract = new VotingContract();
+  let contract = VotingContract.load();
   contract.persist();
 }
 
 /// Ping to update the votes according to current stake of validators.
 export function ping() {
-  let contract = new VotingContract();
+  let contract = VotingContract.load();
   contract.ping();
   contract.persist();
 }
 
 /// Check whether the voting has ended.
 export function check_result() {
-  let contract = new VotingContract();
+  let contract = VotingContract.load();
   contract.check_result();
   contract.persist();
 }
@@ -178,14 +184,14 @@ export function check_result() {
 /// Method for validators to vote or withdraw the vote.
 /// Votes for if `is_vote` is true, or withdraws the vote if `is_vote` is false.
 export function vote(is_vote: bool) {
-  let contract = new VotingContract();
+  let contract = VotingContract.load();
   contract.vote(is_vote);
   contract.persist();
 }
 
 /// Get the timestamp of when the voting finishes. `None` means the voting hasn't ended yet
 export function get_result(): Option<WrappedTimestamp> {
-  let contract = new VotingContract();
+  let contract = VotingContract.load();
   return contract.get_result();
 }
 
@@ -193,7 +199,7 @@ export function get_result(): Option<WrappedTimestamp> {
 /// Note: as a view method, it doesn't recompute the active stake. May need to call `ping` to
 /// update the active stake.
 export function get_total_voted_stake(): [u128, u128] {
-  let contract = new VotingContract();
+  let contract = VotingContract.load();
   return contract.get_total_voted_stake();
 }
 
