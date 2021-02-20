@@ -24,8 +24,33 @@ const KEY_VOTING_CONTRACT: StorageKey = "voting_contract";
 // Main Contract Class //
 
 // @nearBindgen
-// abstract class BaseContract {
-//   abstract persist(): void;
+// abstract class BaseContract<T> {
+//   // singleton
+//   private static instance: VotingContract;
+
+//   // disable construction outside of "VotingContract.load()"
+//   private constructor() {}
+
+//   // storage key used for persisting contract data
+//   private static readonly key: StorageKey = KEY_VOTING_CONTRACT;
+
+//   static init(): T {
+//     assert(!storage.hasKey(key), )
+//     new T()
+//   }
+
+//   // singleton initializer
+//   static load(): T {
+//     if (!this.instance) {
+//       this.instance = storage.get<T>(this.key) || new VotingContract();
+//     }
+//     return this.instance;
+//   }
+  
+//   // instance method for persisting the contract to account storage
+//   persist() {
+//     storage.set<VotingContract>(VotingContract.key, this);
+//   }
 // }
 
 @nearBindgen
@@ -39,7 +64,15 @@ export class VotingContract {
   private constructor() {}
 
   // storage key used for persisting contract data
-  static readonly key: StorageKey = KEY_VOTING_CONTRACT;
+  private static readonly key: StorageKey = KEY_VOTING_CONTRACT;
+
+  // I'm not sure about this yet .. but something like init is necessary for new construction
+  static init(): VotingContract {
+    assert(!this.is_init(), "Voting contract has already been initialized");
+    let contract = new VotingContract()
+    contract.persist();
+    return contract;
+  }
 
   // singleton initializer
   static load(): VotingContract {
@@ -50,10 +83,13 @@ export class VotingContract {
   }
   
   // instance method for persisting the contract to account storage
-  persist() {
+  persist(): void {
     storage.set<VotingContract>(VotingContract.key, this);
   }
 
+  private static is_init(): bool {
+    return storage.hasKey(VotingContract.key);
+  }
   // rest of the class is basically the same as rust version
 
   votes: Map<AccountId, Balance>
@@ -141,8 +177,6 @@ export class VotingContract {
     // Note :: I think this is okay to just return without processing .. need to confirm -T
     return this.votes;
   }
-
-
 
 }
 
