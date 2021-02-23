@@ -15,10 +15,26 @@ type EpochHeight = number;
 type WrappedTimestamp = u64;
 type PublicKey = Uint8Array;
 
-
-// Generic types //
-type Option < T > = T | None;
-type None = null;
+class Option<T> {
+  constructor(readonly value: T) {}
+  is_some(): bool {
+    return (!this.is_none());
+  }
+  is_none(): bool {
+    if (isNullable<T>() || isReference<T>()) {
+      return changetype<usize>(this.value) == 0;
+    } else {
+      return false
+    }
+  }
+  expect(message: string = "Missing expected value"): T {
+    assert(this.is_some(), message);
+    return this.value;
+  }
+  unwrap(): T {
+    return this.expect();
+  }
+}
 
 // STORAGE //
 type StorageKey = string;
@@ -32,20 +48,20 @@ export type RequestId = u32;
 
 // @ts-ignore
 @nearBindgen
-export class FunctionCallPermission {
-  allowance: Option < u128 >
-    receiver_id: AccountId
+class FunctionCallPermission {
+  allowance: u128
+  receiver_id: AccountId
   method_names: Array < string >
 }
 // @ts-ignore
 @nearBindgen
-export class MultiSigRequestAction {
+class MultiSigRequestAction {
   constructor(readonly type: ActionType) {}
 }
 
 // @ts-ignore
 @nearBindgen
-export enum ActionType {
+enum ActionType {
   Transfer,
   CreateAccount,
   DeployContract,
@@ -58,7 +74,7 @@ export enum ActionType {
 
 // @ts-ignore
 @nearBindgen
-export class TransferAction extends MultiSigRequestAction {
+class TransferAction extends MultiSigRequestAction {
   constructor(readonly amount: u128) {
     super(ActionType.Transfer);
   }
@@ -66,7 +82,7 @@ export class TransferAction extends MultiSigRequestAction {
 
 // @ts-ignore
 @nearBindgen
-export class CreateAccountAction extends MultiSigRequestAction {
+class CreateAccountAction extends MultiSigRequestAction {
   constructor() {
     super(ActionType.CreateAccount);
   }
@@ -74,7 +90,7 @@ export class CreateAccountAction extends MultiSigRequestAction {
 
 // @ts-ignore
 @nearBindgen
-export class DeployContractAction extends MultiSigRequestAction {
+class DeployContractAction extends MultiSigRequestAction {
   constructor(readonly code: Uint8Array) {
     super(ActionType.DeployContract);
   }
@@ -82,7 +98,7 @@ export class DeployContractAction extends MultiSigRequestAction {
 
 // @ts-ignore
 @nearBindgen
-export class AddKeyAction extends MultiSigRequestAction {
+class AddKeyAction extends MultiSigRequestAction {
   constructor(
     readonly public_key: PublicKey,
     readonly permission: Option < FunctionCallPermission >
@@ -93,7 +109,7 @@ export class AddKeyAction extends MultiSigRequestAction {
 
 // @ts-ignore
 @nearBindgen
-export class DeleteKeyAction extends MultiSigRequestAction {
+class DeleteKeyAction extends MultiSigRequestAction {
   constructor(
     readonly public_key: PublicKey
   ) {
@@ -103,11 +119,11 @@ export class DeleteKeyAction extends MultiSigRequestAction {
 
 // @ts-ignore
 @nearBindgen
-export class FunctionCallAction extends MultiSigRequestAction {
+class FunctionCallAction extends MultiSigRequestAction {
 
   constructor(
     readonly method_name: string,
-    readonly args: Uint8Array,
+    readonly args: undefined,
     readonly deposit: u128,
     readonly gas: u64
   ) {
@@ -117,7 +133,7 @@ export class FunctionCallAction extends MultiSigRequestAction {
 }
 // @ts-ignore
 @nearBindgen
-export class SetNumConfirmationsAction extends MultiSigRequestAction {
+class SetNumConfirmationsAction extends MultiSigRequestAction {
   constructor(
     readonly num_confirmations: u32
   ) {
@@ -125,7 +141,7 @@ export class SetNumConfirmationsAction extends MultiSigRequestAction {
   }
 }
 @nearBindgen
-export class SetActiveRequestsLimitAction extends MultiSigRequestAction {
+class SetActiveRequestsLimitAction extends MultiSigRequestAction {
   constructor(
     readonly active_request_limit: u32
   ) {
@@ -133,13 +149,13 @@ export class SetActiveRequestsLimitAction extends MultiSigRequestAction {
   }
 }
 @nearBindgen
-export class MultiSigRequest {
+class MultiSigRequest {
   receiver_id: AccountId
   actions: MultiSigRequestAction[]
 }
 
 @nearBindgen
-export class MultiSigRequestWithSigner {
+class MultiSigRequestWithSigner {
   request: MultiSigRequest
   signer_pk: PublicKey
   added_timestamp: u64
@@ -174,7 +190,7 @@ export class MultiSigContract {
   }
   
   // instance method for persisting the contract to account storage
-  persist() {
+  persist(): void {
     storage.set<MultiSigContract>(MultiSigContract.key, this);
   }
   
@@ -208,7 +224,7 @@ export class MultiSigContract {
     return request_id;
   }
 
-  delete_request(request_id: RequestId) {
+  delete_request(request_id: RequestId): void {
     this.assert_valid_request(request_id);
     let request_with_signer = this.requests.get(request_id);
     assert((request_with_signer), "No such request");
@@ -223,41 +239,41 @@ export class MultiSigContract {
     request.actions.forEach((action) => {
       switch (action.type) {
         case ActionType.Transfer: {
-          let {
-            amount
-          } = (action as TransferAction);
+          let amount: Balance;
+          ({amount} = (action as TransferAction));
           promise = promise.transfer(amount);
         }
         case ActionType.CreateAccount: {
           promise = promise.create_account();
         }
         case ActionType.DeployContract: {
-          let {
-            code
-          } = (action as DeployContractAction)
+          let code: Uint8Array;
+          ({code } = (action as DeployContractAction));
           promise = promise.deploy_contract(code);
         }
         case ActionType.AddKey: {
-          let {
+          let public_key: PublicKey;
+          let permission: Option<FunctionCallPermission>;
+          
+          ({
             public_key,
             permission
-          } = (action as AddKeyAction);
+          } = (action as AddKeyAction));
           this.assert_self_request(receiver_id);
-          if (permission) {
+          if (permission.is_some()) {
             promise = promise.add_access_key(
               public_key,
-              permission.allowance || DEFAULT_ALLOWANCE,
-              permission.receiver_id,
-              permission.method_names
+              permission.unwrap().allowance || DEFAULT_ALLOWANCE,
+              permission.unwrap().receiver_id,
+              permission.unwrap().method_names
             )
           } else {
             promise = promise.add_full_access_key(public_key);
           }
         }
         case ActionType.DeleteKey: {
-          let {
-            public_key
-          } = (action as DeleteKeyAction);
+          let public_key: PublicKey
+          ({public_key} = (action as DeleteKeyAction));
           this.assert_self_request(receiver_id);
           let pk: PublicKey = public_key;
           let request_ids: Array<u32> = [];
@@ -278,26 +294,30 @@ export class MultiSigContract {
           promise = promise.delete_key(pk);
         }
         case ActionType.FunctionCall: {
-          let {
+          let method_name: string;
+          let args: undefined;
+          let deposit: u128;
+          let gas: number;
+          ({
             method_name,
             args,
             deposit,
             gas,
-          } = (action as FunctionCallAction);
+          } = (action as FunctionCallAction));
           promise = promise.function_call(method_name, args, deposit, gas);
         }
         case ActionType.SetNumConfirmations: {
-          let {
+          let num_confirmations: u32;
+          ({
             num_confirmations 
-          } = (action as SetNumConfirmationsAction);
+          } = (action as SetNumConfirmationsAction));
           this.assert_one_action_only(receiver_id, num_actions);
           this.num_confirmations = num_confirmations;
           return promise;
         }
         case ActionType.SetActiveRequestsLimit: {
-          let {
-            active_request_limit
-          } = (action as SetActiveRequestsLimitAction);
+          let active_request_limit: u32;
+          ({active_request_limit} = (action as SetActiveRequestsLimitAction));
           this.assert_one_action_only(receiver_id, num_actions);
           this.active_requests_limit = active_request_limit;
           return promise;
@@ -350,16 +370,16 @@ export class MultiSigContract {
     return request_with_signer.request;
   }
 
-  private assert_valid_request(request_id: RequestId) {
+  private assert_valid_request(request_id: RequestId): void {
     assert(context.contractName == context.predecessor, "Predecessor account must be current account");
     assert(this.requests.has(request_id), "No such request: either wrong number or already confirmed");
     assert(this.confirmations.has(request_id), "Internal error: confirmations mismatch requests");
   }
-  private assert_self_request(receiver_id: AccountId) {
+  private assert_self_request(receiver_id: AccountId): void {
     assert(receiver_id == context.contractName, "This method only works when receiver_id is equal to current_account_id");
   }
 
-  private assert_one_action_only(receiver_id: AccountId, num_actions: usize) {
+  private assert_one_action_only(receiver_id: AccountId, num_actions: usize): void {
     this.assert_self_request(receiver_id);
     assert(num_actions == 1, "This metod should be a separate request");
   }
@@ -400,14 +420,14 @@ export class MultiSigContract {
 
 // @ts-ignore
 @exportAs("default")
-export function fallback() {
+export function fallback(): void {
   logging.log("💥 :: Multisig contract should be initialized before usage");
   env.panic();
 }
 
 // @ts-ignore
 @exportAs("new")
-export function main() {
+export function main(): void {
   assert(!storage.hasKey(KEY_MULTI_SIG_CONTRACT), "Already initialized");
   let contract = MultiSigContract.load();
   contract.persist();
@@ -427,7 +447,7 @@ export function add_request_and_confirm(request: MultiSigRequest): RequestId {
   return result;
 }
 
-export function delete_request(request_id: RequestId) {
+export function delete_request(request_id: RequestId):void  {
   let contract = MultiSigContract.load();
   contract.delete_request(request_id);
   contract.persist();
@@ -495,15 +515,4 @@ export function get_request_nonce(): u32 {
   let contract = MultiSigContract.load();
   let result = contract.get_request_nonce();
   return result;
-}
-
-// HELPER FUNCTIONS
-
-function _is_some < T > (option: Option < T > ): bool {
-  return option == null;
-}
-
-
-function _load_contract < T > (key: StorageKey): Option < T > {
-  return storage.get < T > (key);
 }

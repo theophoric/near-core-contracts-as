@@ -2,19 +2,37 @@ import {
   u128,
   context,
   env,
-  storage,
-  Storage,
+  storage
 } from 'near-sdk-as'
+import { get_number_of_accounts } from '../staking-pool/main';
 
 // NEAR types //
 type AccountId = string;
 type Balance = u128;
-type EpochHeight = number;
+type EpochHeight = u64;
 type WrappedTimestamp = u64;
 
-// NOTE :: not sure if this is the right way to do this.. but the only union types available in as are | null 
-type Option<T> = T | None;
-type None = null;
+class Option<T> {
+  constructor(readonly value: T) {}
+  is_some(): bool {
+    return (!this.is_none());
+  }
+  is_none(): bool {
+    if (isNullable<T>() || isReference<T>()) {
+      return changetype<usize>(this.value) == 0;
+    } else {
+      return false
+    }
+  }
+  expect(message: string = "Missing expected value"): T {
+    assert(this.is_some(), message);
+    return this.value;
+  }
+  unwrap(): T {
+    return this.expect();
+  }
+}
+
 
 // STORAGE //
 type StorageKey = string;
@@ -54,14 +72,18 @@ const KEY_VOTING_CONTRACT: StorageKey = "voting_contract";
 // }
 
 @nearBindgen
-// @ts-ignore
 export class VotingContract {
 
   // singleton
   private static instance: VotingContract;
 
   // disable construction outside of "VotingContract.load()"
-  private constructor() {}
+  private constructor(
+    public votes: Map<AccountId, Balance>,
+    public total_voted_stake: Balance,
+    public result: Option<WrappedTimestamp>,
+    public last_epoch_height: EpochHeight
+  ) {}
 
   // storage key used for persisting contract data
   private static readonly key: StorageKey = KEY_VOTING_CONTRACT;
@@ -69,19 +91,24 @@ export class VotingContract {
   // I'm not sure about this yet .. but something like init is necessary for new construction
   static init(): VotingContract {
     assert(!this.is_init(), "Voting contract has already been initialized");
-    let contract = new VotingContract()
+    let contract = new VotingContract(
+      new Map<AccountId, Balance>(),
+      u128.Zero,
+      new Option<WrappedTimestamp>(0),
+      0
+    )
     contract.persist();
     return contract;
   }
 
   // singleton initializer
   static load(): VotingContract {
+    assert(this.is_init(), "Voting contract must be initialized with new()");
     if (!this.instance) {
-      this.instance = storage.get<VotingContract>(this.key) || new VotingContract();
+      this.instance = storage.getSome<VotingContract>(this.key)
     }
     return this.instance;
   }
-  
   // instance method for persisting the contract to account storage
   persist(): void {
     storage.set<VotingContract>(VotingContract.key, this);
@@ -92,20 +119,19 @@ export class VotingContract {
   }
   // rest of the class is basically the same as rust version
 
-  votes: Map<AccountId, Balance>
-  total_voted_stake: Balance
-  result: Option<WrappedTimestamp>
-  last_epoch_height: EpochHeight
+
 
   ping(): void {
     assert(
-      _is_none(this.result),
+      this.result.is_none(),
       "Voting has already ended"
     );
     let cur_epoch_height = env.epoch_height();
-    if (cur_epoch_height != this.last_epoch_height) {
+    if (cur_epoch_height != this.last_epoch_height ) {
       this.total_voted_stake = u128.Zero;
-      for (let account_id in this.votes) {
+      let account_ids = this.votes.keys();
+      for (let i = 0; i < account_ids.length; i ++ ) {
+        let account_id = account_ids[i];
         let account_current_stake = env.validator_stake(account_id);
         if (account_current_stake > u128.Zero) {
           this.votes.set(account_id, account_current_stake);
@@ -118,23 +144,29 @@ export class VotingContract {
 
   check_result(): void {
     assert(
-      _is_none(this.result),
+      this.result.is_none(),
       "check result is called after result is already set"
     );
 
     let total_stake = env.validator_total_stake();
     if (
-      // NOTE -- don't really know how to handle operations with checked u128 type - T
-      this.total_voted_stake >
-      u128.from(changetype<number>(total_stake) * 2 / 3)
+      // u128 math is verbose -T
+      u128.gt(
+        this.total_voted_stake,
+        u128.mul(
+          total_stake,
+          u128.div(
+            u128.from(2),
+            u128.from(3)))
+      )
     ) {
-      this.result = env.block_timestamp();
+      this.result = new Option(env.block_timestamp());
     }
   }
 
-  vote(is_vote: bool) {
+  vote(is_vote: bool):void {
     this.ping();
-    if (_is_some(this.result)) {
+    if (this.result.is_some()) {
       return;
     }
     // NOTE :: I'm assuming that this is equivalent to env::predecessor_account_id();
@@ -154,7 +186,7 @@ export class VotingContract {
     this.votes.delete(account_id);
     assert(
       voted_stake <= this.total_voted_stake,
-      "invariant: voted stake " + voted_stake + " is more than total voted stake " + this.total_voted_stake
+      "invariant: voted stake " + voted_stake.toString() + " is more than total voted stake " + this.total_voted_stake.toString()
     );
     this.total_voted_stake = u128.add(
       this.total_voted_stake, u128.sub(
@@ -169,7 +201,7 @@ export class VotingContract {
     return this.result;
   }
 
-  get_total_voted_stake():  [u128, u128] {
+  get_total_voted_stake():  StaticArray<u128> { // no tuple type available
     return [this.total_voted_stake, env.validator_total_stake()];
   }
 
@@ -178,7 +210,18 @@ export class VotingContract {
     return this.votes;
   }
 
+  
 }
+
+// class Pair<T> {
+//   constructor(readonly x: T, readonly y: T) {}
+//   toArray(): StaticArray<T> {
+//     let a = new StaticArray<T>(2)
+//     a[0] = this.x;
+//     a[1] = this.y;
+//     return a;
+//   }
+// }
 
 ///////////////
 // INTERFACE //
@@ -187,7 +230,7 @@ export class VotingContract {
 // Not needed, only included for api parity with rust version
 // @ts-ignore
 @exportAs("default")
-export function fallback() {
+export function fallback(): void {
   env.panic();
 }
 
@@ -195,21 +238,21 @@ export function fallback() {
 // NOTE :: this initialized function is not actually necessary; it is included in order to maintain the same interface and behavior as the rust version (panics if any method is called before init) and to demonstrate how to use the @exportAs decorator 
 // @ts-ignore
 @exportAs("new")
-export function main() {
+export function main(): void {
   assert(!storage.hasKey(KEY_VOTING_CONTRACT), "The contract is already initialized");
   let contract = VotingContract.load();
   contract.persist();
 }
 
 /// Ping to update the votes according to current stake of validators.
-export function ping() {
+export function ping(): void {
   let contract = VotingContract.load();
   contract.ping();
   contract.persist();
 }
 
 /// Check whether the voting has ended.
-export function check_result() {
+export function check_result():void {
   let contract = VotingContract.load();
   contract.check_result();
   contract.persist();
@@ -217,7 +260,7 @@ export function check_result() {
 
 /// Method for validators to vote or withdraw the vote.
 /// Votes for if `is_vote` is true, or withdraws the vote if `is_vote` is false.
-export function vote(is_vote: bool) {
+export function vote(is_vote: bool):void {
   let contract = VotingContract.load();
   contract.vote(is_vote);
   contract.persist();
@@ -232,23 +275,10 @@ export function get_result(): Option<WrappedTimestamp> {
 /// Returns current a pair of `total_voted_stake` and the total stake.
 /// Note: as a view method, it doesn't recompute the active stake. May need to call `ping` to
 /// update the active stake.
-export function get_total_voted_stake(): [u128, u128] {
+export function get_total_voted_stake(): StaticArray<u128> {
   let contract = VotingContract.load();
   return contract.get_total_voted_stake();
 }
-
-/////////////
-// HELPERS //
-/////////////
-
-function _is_none(thing: any): bool {
-  return thing == null;
-}
-
-function _is_some(thing: any): bool {
-  return thing != null;
-}
-
 ///////////
 // TESTS //
 ///////////
