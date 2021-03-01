@@ -1,18 +1,13 @@
 import {
   u128,
   context,
-  env,
-  storage,
   base58,
-  logging,
   ContractPromiseBatch,
 } from 'near-sdk-as';
 
 // NEAR types //
 type AccountId = string;
 type Balance = u128;
-type EpochHeight = number;
-type WrappedTimestamp = u64;
 type PublicKey = Uint8Array;
 
 class Option<T> {
@@ -58,6 +53,10 @@ class FunctionCallPermission {
 class MultiSigRequestAction {
   constructor(readonly type: ActionType) {}
 }
+
+// interface MultiSigRequestAction {
+//   type(): ActionType;
+// }
 
 // @ts-ignore
 @nearBindgen
@@ -172,28 +171,6 @@ class MultiSigRequestWithSigner {
 @nearBindgen
 export class MultiSigContract {
 
-  // singleton
-  private static instance: MultiSigContract;
-
-  // disable construction outside of "MultiSigContract.load()"
-  private constructor() {}
-
-  // storage key used for persisting contract data
-  static readonly key: StorageKey = KEY_MULTI_SIG_CONTRACT;
-
-  // singleton initializer
-  static load(): MultiSigContract {
-    if (!this.instance) {
-      this.instance = storage.get<MultiSigContract>(this.key) || MultiSigContract.load();
-    }
-    return this.instance;
-  }
-  
-  // instance method for persisting the contract to account storage
-  persist(): void {
-    storage.set<MultiSigContract>(MultiSigContract.key, this);
-  }
-  
   num_confirmations: u32
   request_nonce: RequestId
   requests: Map < RequestId,
@@ -203,6 +180,7 @@ export class MultiSigContract {
   // per_key
   active_requests_limit: u32
 
+  @mutateState()
   add_request(request: MultiSigRequest): RequestId {
     assert(
       (context.contractName == context.predecessor),
@@ -218,12 +196,14 @@ export class MultiSigContract {
     return this.request_nonce - 1;
   }
 
+  @mutateState()
   add_request_and_confirm(request: MultiSigRequest): RequestId {
     let request_id = this.add_request(request);
     this.confirm(request_id);
     return request_id;
   }
 
+  @mutateState()
   delete_request(request_id: RequestId): void {
     this.assert_valid_request(request_id);
     let request_with_signer = this.requests.get(request_id);
@@ -231,6 +211,7 @@ export class MultiSigContract {
     assert(context.blockTimestamp > request_with_signer.added_timestamp + REQUEST_COOLDOWN, "Request cannot be deleted immediately after creation");
   }
 
+  @mutateState()
   execute_request(request: MultiSigRequest): ContractPromiseBatch  {
     let promise = ContractPromiseBatch.create(request.receiver_id);
     let receiver_id = request.receiver_id;
@@ -329,6 +310,7 @@ export class MultiSigContract {
 
   /// Confirm given request with given signing key.
   /// If with this, there has been enough confirmation, a promise with request will be scheduled.
+  @mutateState()
   confirm(request_id: RequestId): ContractPromiseBatch {
     this.assert_valid_request(request_id);
     let signer_acount_pk = base58.decode(context.senderPublicKey);
@@ -336,9 +318,9 @@ export class MultiSigContract {
     assert(!confirmations.has(signer_acount_pk), "Already confirmed this request from this key");
     if (confirmations.size + 1 >= this.num_confirmations) { // why not just c.size > this.n_c ? (vs +1 >=) -T
       let request = this.remove_request(request_id);
-           /********************************
-            NOTE: If the tx execution fails for any reason, the request and confirmations are removed already, so the client has to start all over
-            ********************************/
+      /********************************
+      NOTE: If the tx execution fails for any reason, the request and confirmations are removed already, so the client has to start all over
+      ********************************/
       return this.execute_request(request);
     } else {
       confirmations.add(signer_acount_pk);
@@ -352,6 +334,7 @@ export class MultiSigContract {
   ********************************/
 
   // removes request, removes confirmations and reduces num_requests_pk - used in delete, delete_key, and confirm
+  @mutateState()
   remove_request(request_id: RequestId): MultiSigRequest {
     // remove confirmations for this request
     this.confirmations.delete(request_id);
@@ -412,107 +395,4 @@ export class MultiSigContract {
   get_request_nonce(): u32 {
     return this.request_nonce;
   }
-}
-
-/***************************
-  CONTRACT INTERFACE
-******************************/
-
-// @ts-ignore
-@exportAs("default")
-export function fallback(): void {
-  logging.log("💥 :: Multisig contract should be initialized before usage");
-  env.panic();
-}
-
-// @ts-ignore
-@exportAs("new")
-export function main(): void {
-  assert(!storage.hasKey(KEY_MULTI_SIG_CONTRACT), "Already initialized");
-  let contract = MultiSigContract.load();
-  contract.persist();
-}
-
-export function add_request(request: MultiSigRequest): RequestId {
-  let contract = MultiSigContract.load();
-  let result = contract.add_request(request);
-  contract.persist();
-  return result;
-}
-
-export function add_request_and_confirm(request: MultiSigRequest): RequestId {
-  let contract = MultiSigContract.load();
-  let result = contract.add_request_and_confirm(request);
-  contract.persist();
-  return result;
-}
-
-export function delete_request(request_id: RequestId):void  {
-  let contract = MultiSigContract.load();
-  contract.delete_request(request_id);
-  contract.persist();
-}
-
-export function execute_request(request: MultiSigRequest): ContractPromiseBatch  {
-  let contract = MultiSigContract.load();
-  let result = contract.execute_request(request);
-  contract.persist();
-  return result;
-}
-
-/// Confirm given request with given signing key.
-/// If with this, there has been enough confirmation, a promise with request will be scheduled.
-export function confirm(request_id: RequestId): ContractPromiseBatch {
-  let contract = MultiSigContract.load();
-  let result = contract.confirm(request_id);
-  contract.persist();
-  return result;
-}
-
-/********************************
-Helper methods
-********************************/
-
-// removes request, removes confirmations and reduces num_requests_pk - used in delete, delete_key, and confirm
-export function remove_request(request_id: RequestId): MultiSigRequest {
-  let contract = MultiSigContract.load();
-  let result = contract.remove_request(request_id);
-  contract.persist();
-  return result;
-}
-
-
-/********************************
-View methods
-********************************/
-
-export function get_request(request_id: RequestId): MultiSigRequest {
-  let contract = MultiSigContract.load();
-  return contract.get_request(request_id);
-}
-
-export function get_num_requests_pk(public_key: PublicKey): u32 {
-  let contract = MultiSigContract.load();
-  return contract.get_num_requests_pk(public_key);
-}
-
-export function list_request_ids(): Array<RequestId> {
-  let contract = MultiSigContract.load();
-  return contract.list_request_ids();
-}
-
-export function get_confirmations(request_id: RequestId) : Array<PublicKey> {
-  let contract = MultiSigContract.load();
-  let result = contract.get_confirmations(request_id);
-  return result;
-}
-export function get_num_confirmations(): u32  {
-  let contract = MultiSigContract.load();
-  let result = contract.get_num_confirmations();
-  return result;
-}
-export function get_request_nonce(): u32 {
-  let contract = MultiSigContract.load();
-  let result = contract.get_request_nonce();
-  return result;
 }
