@@ -52,6 +52,7 @@ export class VotingContract {
     this.last_epoch_height = 0;
   }
 
+  @mutateState()
   ping(): void {
     assert(
       this.result.is_none(),
@@ -73,6 +74,7 @@ export class VotingContract {
     }
   }
 
+  @mutateState()
   check_result(): void {
     assert(
       this.result.is_none(),
@@ -95,6 +97,7 @@ export class VotingContract {
     }
   }
 
+  @mutateState()
   vote(is_vote: bool):void {
     this.ping();
     if (this.result.is_some()) {
