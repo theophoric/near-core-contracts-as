@@ -5,8 +5,11 @@
   "author": "theophoric",
   "license": "(MIT AND Apache-2.0)",
   "scripts": {
-    "build": "yarn build:contract",
-    "build:contract": "node ./contracts/compile.js",
+    "build": "yarn build:all",
+    "build:all": "node ./contracts/compile.js",
+    "build:multisig": "asb ./contracts/multisig/main.ts",
+    "build:voting": "asb ./contracts/voting/main.ts",
+    "build:staking-pool": "asb ./contracts/staking-pool/main.ts",
     "clean": "rm -rf ./out",
     "test": "yarn test:unit",
     "test:all": "yarn test && yarn test:simulate:runtime",
