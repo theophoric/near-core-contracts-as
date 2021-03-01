@@ -1,10 +1,9 @@
+
 import {
   u128,
   context,
-  env,
-  storage
-} from 'near-sdk-as'
-import { get_number_of_accounts } from '../staking-pool/main';
+  env
+} from 'near-sdk-as';
 
 // NEAR types //
 type AccountId = string;
@@ -33,93 +32,25 @@ class Option<T> {
   }
 }
 
-
-// STORAGE //
-type StorageKey = string;
-const KEY_VOTING_CONTRACT: StorageKey = "voting_contract";
-
-
-// Main Contract Class //
-
-// @nearBindgen
-// abstract class BaseContract<T> {
-//   // singleton
-//   private static instance: VotingContract;
-
-//   // disable construction outside of "VotingContract.load()"
-//   private constructor() {}
-
-//   // storage key used for persisting contract data
-//   private static readonly key: StorageKey = KEY_VOTING_CONTRACT;
-
-//   static init(): T {
-//     assert(!storage.hasKey(key), )
-//     new T()
-//   }
-
-//   // singleton initializer
-//   static load(): T {
-//     if (!this.instance) {
-//       this.instance = storage.get<T>(this.key) || new VotingContract();
-//     }
-//     return this.instance;
-//   }
-  
-//   // instance method for persisting the contract to account storage
-//   persist() {
-//     storage.set<VotingContract>(VotingContract.key, this);
+// class None extends Option<null> {
+//   constructor() {
+//     super(null);
 //   }
 // }
 
 @nearBindgen
 export class VotingContract {
-
-  // singleton
-  private static instance: VotingContract;
-
-  // disable construction outside of "VotingContract.load()"
-  private constructor(
-    public votes: Map<AccountId, Balance>,
-    public total_voted_stake: Balance,
-    public result: Option<WrappedTimestamp>,
-    public last_epoch_height: EpochHeight
-  ) {}
-
-  // storage key used for persisting contract data
-  private static readonly key: StorageKey = KEY_VOTING_CONTRACT;
-
-  // I'm not sure about this yet .. but something like init is necessary for new construction
-  static init(): VotingContract {
-    assert(!this.is_init(), "Voting contract has already been initialized");
-    let contract = new VotingContract(
-      new Map<AccountId, Balance>(),
-      u128.Zero,
-      new Option<WrappedTimestamp>(0),
-      0
-    )
-    contract.persist();
-    return contract;
+  public votes: Map<AccountId, Balance>
+  public total_voted_stake: Balance
+  public result: Option<WrappedTimestamp>
+  public last_epoch_height: EpochHeight
+  // exported as "new"
+  constructor() {
+    this.votes = new Map<AccountId, Balance>();
+    this.total_voted_stake = u128.Zero;
+    this.result = new Option(0); // 0 is interpreted as "none"
+    this.last_epoch_height = 0;
   }
-
-  // singleton initializer
-  static load(): VotingContract {
-    assert(this.is_init(), "Voting contract must be initialized with new()");
-    if (!this.instance) {
-      this.instance = storage.getSome<VotingContract>(this.key)
-    }
-    return this.instance;
-  }
-  // instance method for persisting the contract to account storage
-  persist(): void {
-    storage.set<VotingContract>(VotingContract.key, this);
-  }
-
-  private static is_init(): bool {
-    return storage.hasKey(VotingContract.key);
-  }
-  // rest of the class is basically the same as rust version
-
-
 
   ping(): void {
     assert(
@@ -208,77 +139,5 @@ export class VotingContract {
   get_votes(): Map<AccountId, u128> {
     // Note :: I think this is okay to just return without processing .. need to confirm -T
     return this.votes;
-  }
-
-  
+  } 
 }
-
-// class Pair<T> {
-//   constructor(readonly x: T, readonly y: T) {}
-//   toArray(): StaticArray<T> {
-//     let a = new StaticArray<T>(2)
-//     a[0] = this.x;
-//     a[1] = this.y;
-//     return a;
-//   }
-// }
-
-///////////////
-// INTERFACE //
-///////////////
-
-// Not needed, only included for api parity with rust version
-// @ts-ignore
-@exportAs("default")
-export function fallback(): void {
-  env.panic();
-}
-
-// Initialize contract
-// NOTE :: this initialized function is not actually necessary; it is included in order to maintain the same interface and behavior as the rust version (panics if any method is called before init) and to demonstrate how to use the @exportAs decorator 
-// @ts-ignore
-@exportAs("new")
-export function main(): void {
-  assert(!storage.hasKey(KEY_VOTING_CONTRACT), "The contract is already initialized");
-  let contract = VotingContract.load();
-  contract.persist();
-}
-
-/// Ping to update the votes according to current stake of validators.
-export function ping(): void {
-  let contract = VotingContract.load();
-  contract.ping();
-  contract.persist();
-}
-
-/// Check whether the voting has ended.
-export function check_result():void {
-  let contract = VotingContract.load();
-  contract.check_result();
-  contract.persist();
-}
-
-/// Method for validators to vote or withdraw the vote.
-/// Votes for if `is_vote` is true, or withdraws the vote if `is_vote` is false.
-export function vote(is_vote: bool):void {
-  let contract = VotingContract.load();
-  contract.vote(is_vote);
-  contract.persist();
-}
-
-/// Get the timestamp of when the voting finishes. `None` means the voting hasn't ended yet
-export function get_result(): Option<WrappedTimestamp> {
-  let contract = VotingContract.load();
-  return contract.get_result();
-}
-
-/// Returns current a pair of `total_voted_stake` and the total stake.
-/// Note: as a view method, it doesn't recompute the active stake. May need to call `ping` to
-/// update the active stake.
-export function get_total_voted_stake(): StaticArray<u128> {
-  let contract = VotingContract.load();
-  return contract.get_total_voted_stake();
-}
-///////////
-// TESTS //
-///////////
