@@ -10,14 +10,14 @@ import {
   ContractPromiseResult,
   util,
   u256,
-  math
+  math,
+  persist
 } from 'near-sdk-as';
 
 // NEAR types //
 type AccountId = string;
 type Balance = u128;
 type EpochHeight = u64;
-type WrappedTimestamp = u64;
 type PublicKey = Uint8Array;
 type Base58PublicKey = PublicKey; // need some better way of doing this
 
@@ -117,95 +117,67 @@ const NUM_EPOCHS_TO_UNLOCK: EpochHeight = 4;
 @nearBindgen
 export class StakingContract {
 
-  static readonly key: StorageKey = STATE_KEY;
-
-
-  // singleton
-  private static instance: StakingContract;
-
-  // disable construction outside of "StakingContract.load()"
-  private constructor(
     /// The account ID of the owner who's running the staking validator node.
     /// NOTE: This is different from the current account ID which is used as a validator account.
     /// The owner of the staking pool can change staking public key and adjust reward fees.
-    public owner_id: AccountId,
+    public owner_id: AccountId;
     /// The public key which is used for staking action. It's the public key of the validator node
     /// that validates on behalf of the pool.
-    public stake_public_key: Base58PublicKey,
+    public stake_public_key: Base58PublicKey;
     /// The last epoch height when `ping` was called.
-    public last_epoch_height: EpochHeight,
+    public last_epoch_height: EpochHeight;
     /// The last total balance of the account (consists of staked and unstaked balances).
-    public last_total_balance: Balance,
+    public last_total_balance: Balance;
     /// The total amount of shares. It should be equal to the total amount of shares across all
     /// accounts.
-    public total_stake_shares: NumStakeShares,
+    public total_stake_shares: NumStakeShares;
     /// The total staked balance.
-    public total_staked_balance: Balance,
+    public total_staked_balance: Balance;
     /// The fraction of the reward that goes to the owner of the staking pool for running the
     /// validator node.
-    public reward_fee_fraction: RewardFeeFraction,
+    public reward_fee_fraction: RewardFeeFraction;
     /// Persistent map from an account ID to the corresponding account.
-    public accounts: Map < AccountId, Account > ,
+    public accounts: Map < AccountId, Account >;
     /// Whether the staking is paused.
     /// When paused, the account unstakes everything (stakes 0) and doesn't restake.
     /// It doesn't affect the staking shares or reward distribution.
     /// Pausing is useful for node maintenance. Only the owner can pause and resume staking.
     /// The contract is not paused by default.
-    public paused: bool,
-  ) {
-    this.internal_restake();
-  }
+    public paused: bool;
+
+    private init: bool;
 
   // storage key used for persisting contract data
 
   // Initialize a new Staking Contract
-  static init(owner_id: AccountId, stake_public_key: Base58PublicKey, reward_fee_fraction: RewardFeeFraction): StakingContract {
-    assert(!this.is_init(), "StakingContract has ahready been initialized");
+  constructor (owner_id: AccountId, stake_public_key: Base58PublicKey, reward_fee_fraction: RewardFeeFraction) {
     reward_fee_fraction.assert_valid();
     assert(env.isValidAccountID(owner_id), "The owner id is invalid");
-    let account_balance = context.accountBalance
+    let account_balance = context.accountBalance;
     let total_staked_balance = u128.sub(account_balance, STAKE_SHARE_PRICE_GUARANTEE_FUND);
     assert(context.accountLockedBalance > u128.Zero);
+    this.owner_id =  owner_id;
+    this.stake_public_key =  stake_public_key;
+    this.last_epoch_height =  env.epoch_height();
+    this.last_total_balance =  account_balance;
+    this.total_stake_shares =  total_staked_balance;
+    this.total_staked_balance =  total_staked_balance;
+    this.reward_fee_fraction =  reward_fee_fraction;
+    this.accounts =  new Map < AccountId, Account > ();
+    this.paused = false;
 
-    let contract = new StakingContract(
-      owner_id,
-      stake_public_key,
-      env.epoch_height(),
-      account_balance,
-      total_staked_balance,
-      total_staked_balance,
-      reward_fee_fraction,
-      new Map < AccountId, Account > (),
-      false
-    );
+    this.init = true;
 
-    contract.persist();
-
-    return contract;
+    this.internal_restake();
   }
 
-  // singleton initializer
-  static load(): StakingContract {
-    assert(this.is_init(), "This contract has not been initialized");
-
-    if (!this.instance) {
-      this.instance = storage.getSome < StakingContract > (this.key);
-    }
-    return this.instance;
-  }
-
-  // instance method for persisting the contract to account storage
-  persist(): void {
-    storage.set < StakingContract > (StakingContract.key, this);
-  }
-
-  private static is_init(): bool {
-    return storage.hasKey(StakingContract.key);
+  private assertInit(): void {
+    assert((this.init), "Contract has not been initialized; initialize with #new(owner_id: AccountId, stake_public_key: Base58PublicKey, reward_fee_fraction: RewardFeeFraction)")
   }
 
   // PUBLIC METHODS
 
-
+  @mutateState()
   ping(): void {
     if (this.internal_ping()) {
       this.internal_restake();
@@ -213,6 +185,7 @@ export class StakingContract {
   }
 
   // @payable
+  @mutateState()
   deposit(): void {
     let need_to_restake = this.internal_ping();
     this.internal_deposit();
@@ -225,6 +198,7 @@ export class StakingContract {
 
   /// Deposits the attached amount into the inner account of the predecessor and stakes it.
   // #[payable]
+  @mutateState()
   deposit_and_stake(): void {
     this.internal_ping();
 
@@ -236,9 +210,9 @@ export class StakingContract {
 
   /// Withdraws the entire unstaked balance from the predecessor account.
   /// It's only allowed if the `unstake` action was not performed in the four most recent epochs.
+  @mutateState()
   withdraw_all(): void {
     let need_to_restake = this.internal_ping();
-
     let account_id = context.predecessor;
     let account = this.internal_get_account(account_id);
     this.internal_withdraw(account.unstaked);
@@ -250,6 +224,7 @@ export class StakingContract {
 
   /// Withdraws the non staked balance for given account.
   /// It's only allowed if the `unstake` action was not performed in the four most recent epochs.
+  @mutateState()
   withdraw(amount: Balance): void {
     let need_to_restake = this.internal_ping();
 
@@ -261,6 +236,7 @@ export class StakingContract {
   }
 
   /// Stakes all available unstaked balance from the inner account of the predecessor.
+  @mutateState()
   stake_all(): void {
     // Stake action always restakes
     this.internal_ping();
@@ -274,6 +250,7 @@ export class StakingContract {
 
   /// Stakes the given amount from the inner account of the predecessor.
   /// The inner account should have enough unstaked balance.
+  @mutateState()
   stake(amount: Balance): void {
     // Stake action always restakes
     this.internal_ping();
@@ -285,6 +262,7 @@ export class StakingContract {
 
   /// Unstakes all staked balance from the inner account of the predecessor.
   /// The new total unstaked balance will be available for withdrawal in four epochs.
+  @mutateState()
   unstake_all(): void {
     // Unstake action always restakes
     this.internal_ping();
@@ -300,6 +278,7 @@ export class StakingContract {
   /// Unstakes the given amount from the inner account of the predecessor.
   /// The inner account should have enough staked balance.
   /// The new total unstaked balance will be available for withdrawal in four epochs.
+  @mutateState()
   unstake(amount: Balance): void {
     // Unstake action always restakes
     this.internal_ping();
@@ -415,6 +394,7 @@ export class StakingContract {
 
   /// Owner's method.
   /// Updates current public key to the new given public key.
+  @mutateState()
   update_staking_key(stake_public_key: Base58PublicKey): void {
     this.assert_owner();
     // When updating the staking keythe contract has to restake.
@@ -425,6 +405,7 @@ export class StakingContract {
 
   /// Owner's method.
   /// Updates current reward fee fraction to the new given fraction.
+  @mutateState()
   update_reward_fee_fraction(reward_fee_fraction: RewardFeeFraction): void {
     this.assert_owner();
     reward_fee_fraction.assert_valid();
@@ -438,6 +419,7 @@ export class StakingContract {
 
   /// Owner's method.
   /// Calls `vote(is_vote)` on the given voting contract account ID on behalf of the pool.
+  @mutateState()
   vote(voting_account_id: AccountId, is_vote: bool): ContractPromiseBatch {
     this.assert_owner();
     assert(
@@ -445,12 +427,13 @@ export class StakingContract {
       "Invalid voting account ID"
     );
     
-    let ext = new SelfContract(context.contractName)
-    return ext.on_stake_action()
+    let ext = new ExtVoting(voting_account_id);
+    return ext.vote(is_vote);
   }
 
   /// Owner's method.
   /// Pauses pool staking.
+  @mutateState()
   pause_staking(): void {
     this.assert_owner();
     assert(!this.paused, "The staking is already paused");
@@ -462,6 +445,7 @@ export class StakingContract {
 
   /// Owner's method.
   /// Resumes pool staking.
+  @mutateState()
   resume_staking(): void {
     this.assert_owner();
     assert(this.paused, "The staking is not paused");
@@ -473,6 +457,7 @@ export class StakingContract {
 
 
   // INTERNAL METHODS
+  // No @mutateState provided -- should be on external methods
 
   protected internal_restake(): void {
     if (this.paused) {
@@ -766,7 +751,7 @@ export class StakingContract {
 
 
 @nearBindgen
-export class RewardFeeFraction {
+class RewardFeeFraction {
   numerator: u32;
   denominator: u32;
   assert_valid(): void {
@@ -783,287 +768,6 @@ export class RewardFeeFraction {
 /************************
  * Contract Interface
  * ********************** */
-
-
-
-// @ts-ignore
-@exportAs("new")
-export function main(
-  owner_id: AccountId,
-  stake_public_key: Base58PublicKey,
-  reward_fee_fraction: RewardFeeFraction
-):void {
-  assert(!storage.hasKey(STATE_KEY), "Already initialized")
-  reward_fee_fraction.assert_valid();
-  assert(
-    env.isValidAccountID(owner_id),
-    "The owner account ID is invalid"
-  );
-  let contract = StakingContract.init(owner_id, stake_public_key, reward_fee_fraction);
-  contract.persist();
-}
-
-/// Distributes rewards and restakes if needed.
-// @ts-ignore
-@notPayable
-export function ping(): void {
-    let contract = StakingContract.load();
-    contract.ping();
-    contract.persist();
-}
-
-/// Deposits the attached amount into the inner account of the predecessor.
-// #[payable]
-export function deposit(): void {
-    let contract = StakingContract.load();
-    contract.deposit();
-    contract.persist();
-}
-
-/// Deposits the attached amount into the inner account of the predecessor and stakes it.
-// #[payable]
-export function deposit_and_stake(): void {
-    let contract = StakingContract.load();
-    contract.deposit_and_stake()
-    contract.persist();
-}
-
-/// Withdraws the entire unstaked balance from the predecessor account.
-/// It's only allowed if the `unstake` action was not performed in the four most recent epochs.
-// @ts-ignore
-@notPayable
-export function withdraw_all(): void {
-    let contract = StakingContract.load();
-    contract.withdraw_all()
-    contract.persist();
-   
-}
-
-/// Withdraws the non staked balance for given account.
-/// It's only allowed if the `unstake` action was not performed in the four most recent epochs.
-// @ts-ignore
-@notPayable
-export function withdraw(amount: u128): void {
-    
-    let contract = StakingContract.load();
-    contract.withdraw(amount);
-    contract.persist();
-   
-}
-
-/// Stakes all available unstaked balance from the inner account of the predecessor.
-// @ts-ignore
-@notPayable
-export function stake_all(): void {
-    let contract = StakingContract.load();
-    contract.stake_all();
-    contract.persist();
-   
-}
-
-/// Stakes the given amount from the inner account of the predecessor.
-/// The inner account should have enough unstaked balance.
-// @ts-ignore
-@notPayable
-export function stake(amount: u128): void {
-    let contract = StakingContract.load();
-    contract.stake(amount);
-    contract.persist();
-}
-
-/// Unstakes all staked balance from the inner account of the predecessor.
-/// The new total unstaked balance will be available for withdrawal in four epochs.
-// @ts-ignore
-@notPayable
-export function unstake_all(): void {
-    let contract = StakingContract.load();
-    contract.unstake_all();
-    contract.persist();
-}
-
-/// Unstakes the given amount from the inner account of the predecessor.
-/// The inner account should have enough staked balance.
-/// The new total unstaked balance will be available for withdrawal in four epochs.
-// @ts-ignore
-@notPayable
-export function unstake(amount: u128): void {
-    let contract = StakingContract.load();
-    contract.unstake(amount);
-    contract.persist();
-}
-
-/****************/
-/* View methods */
-/****************/
-
-/// Returns the unstaked balance of the given account.
-// @ts-ignore
-@notPayable
-export function get_account_unstaked_balance(account_id: AccountId) : u128 {
-    let contract = StakingContract.load();
-    return contract.get_account_unstaked_balance(account_id);
-}
-
-/// Returns the staked balance of the given account.
-/// NOTE: This is computed from the amount of "stake" shares the given account has and the
-/// current amount of total staked balance and total stake shares on the account.
-// @ts-ignore
-@notPayable
-export function get_account_staked_balance(account_id: AccountId) : u128 {
-    let contract = StakingContract.load();
-    return contract.get_account_staked_balance(account_id);
-
-}
-
-/// Returns the total balance of the given account (including staked and unstaked balances).
-// @ts-ignore
-@notPayable
-export function get_account_total_balance(account_id: AccountId) : u128 {
-    let contract = StakingContract.load();
-    return contract.get_account_total_balance(account_id);
-}
-
-/// Returns `true` if the given account can withdraw tokens in the current epoch.
-// @ts-ignore
-@notPayable
-export function is_account_unstaked_balance_available(account_id: AccountId) : bool {
-    let contract = StakingContract.load();
-    return contract.is_account_unstaked_balance_available(account_id);
-}
-
-/// Returns the total staking balance.
-// @ts-ignore
-@notPayable
-export function get_total_staked_balance() : u128 {
-    let contract = StakingContract.load();
-    return contract.get_total_staked_balance();
-
-}
-
-/// Returns account ID of the staking pool owner.
-// @ts-ignore
-@notPayable
-export function get_owner_id() : AccountId {
-    let contract = StakingContract.load();
-    return contract.get_owner_id()
-
-}
-
-/// Returns the current reward fee as a fraction.
-// @ts-ignore
-@notPayable
-export function get_reward_fee_fraction() : RewardFeeFraction {
-    let contract = StakingContract.load();
-    return contract.get_reward_fee_fraction()
-
-}
-
-/// Returns the staking public key
-// @ts-ignore
-@notPayable
-export function get_staking_key() : Base58PublicKey {
-    let contract = StakingContract.load();
-    return contract.get_staking_key()
-
-}
-
-/// Returns true if the staking is paused
-// @ts-ignore
-@notPayable
-export function is_staking_paused() : bool {
-    let contract = StakingContract.load();
-    return contract.is_staking_paused()
-
-}
-
-/// Returns human readable representation of the account for the given account ID.
-// @ts-ignore
-@notPayable
-export function get_account(account_id: AccountId) : HumanReadableAccount {
-    let contract = StakingContract.load();
-    return contract.get_account(account_id);
-}
-
-/// Returns the number of accounts that have positive balance on this staking pool.
-// @ts-ignore
-@notPayable
-export function get_number_of_accounts() : u64 {
-    let contract = StakingContract.load();
-    return contract.get_number_of_accounts()
-}
-
-/// Returns the list of accounts
-// @ts-ignore
-@notPayable
-export function get_accounts(from_index: u64, limit: u64): Array<HumanReadableAccount> {
-    let contract = StakingContract.load();
-    return contract.get_accounts(from_index, limit);
-}
-
-/*************/
-/* Callbacks */
-/*************/
-
-// @ts-ignore
-@notPayable
-export function on_stake_action(): void {
-    let contract = StakingContract.load();
-    contract.on_stake_action()
-    contract.persist();
-}
-
-/*******************/
-/* Owner's methods */
-/*******************/
-
-/// Owner's method.
-/// Updates current public key to the new given public key.
-// @ts-ignore
-@notPayable
-export function update_staking_key(stake_public_key: Base58PublicKey): void {
-    let contract = StakingContract.load();
-    contract.update_staking_key(stake_public_key)
-    contract.persist();
-}
-
-/// Owner's method.
-/// Updates current reward fee fraction to the new given fraction.
-// @ts-ignore
-@notPayable
-export function update_reward_fee_fraction(reward_fee_fraction: RewardFeeFraction): void {
-    let contract = StakingContract.load();
-    contract.update_reward_fee_fraction(reward_fee_fraction)
-    contract.persist();
-}
-
-/// Owner's method.
-/// Calls `vote(is_vote)` on the given voting contract account ID on behalf of the pool.
-// @ts-ignore
-@notPayable
-export function vote(voting_account_id: AccountId, is_vote: bool) : ContractPromiseBatch {
-    let contract = StakingContract.load();
-    return contract.vote(voting_account_id, is_vote);
-}
-
-/// Owner's method.
-/// Pauses pool staking.
-// @ts-ignore
-@notPayable
-export function pause_staking(): void {
-    let contract = StakingContract.load();
-    contract.pause_staking()
-    contract.persist();
-}
-
-/// Owner's method.
-/// Resumes pool staking.
-// @ts-ignore
-@notPayable
-export function resume_staking(): void {
-    let contract = StakingContract.load();
-    contract.resume_staking()
-    contract.persist();
-}
 
 
 
@@ -1086,7 +790,7 @@ class ExtVoting extends ExtContract {
   }
 }
 
-export class SelfContract extends ExtContract {
+class SelfContract extends ExtContract {
   /// A callback to check the result of the staking action.
   /// In case the stake amount is less than the minimum staking threshold, the staking action
   /// fails, and the stake amount is not changed. This might lead to inconsistent state and the
