@@ -2,16 +2,8 @@ import {
   u128,
   context,
   env,
-  storage,
-  base58,
   logging,
-  ContractPromise,
   ContractPromiseBatch,
-  ContractPromiseResult,
-  util,
-  u256,
-  math,
-  persist
 } from 'near-sdk-as';
 
 // NEAR types //
@@ -76,7 +68,7 @@ const NO_DEPOSIT: Balance = u128.Zero;
 export type NumStakeShares = Balance;
 
 @nearBindgen
-export class Account {
+class Account {
   constructor(
     public unstaked: Balance,
     public stake_shares: NumStakeShares,
@@ -85,7 +77,7 @@ export class Account {
 }
 
 @nearBindgen
-export class HumanReadableAccount {
+class HumanReadableAccount {
   constructor(
     public account_id: AccountId,
     public unstaked_balance: Balance,
@@ -99,20 +91,6 @@ export class HumanReadableAccount {
 /// when the unstaking promise can arrive at the next epoch, while the inner state is already
 /// updated in the previous epoch. It will not unlock the funds for 4 epochs.
 const NUM_EPOCHS_TO_UNLOCK: EpochHeight = 4;
-
-// @nearBindgen
-// abstract class BaseContract {
-//   abstract persist(): void
-//   constructor(readonly key: StorageKey) {}
-// }
-
-// function expect<T>(some: T | null, message?: string): T {
-//   if (some) {
-//     return some;
-//   } else {
-//     env.panic();
-//   }
-// }
 
 @nearBindgen
 export class StakingContract {
@@ -764,11 +742,6 @@ class RewardFeeFraction {
     return u128.mul(value, u128.div(u128.fromU32(this.numerator), u128.fromU32(this.denominator)));
   }
 }
-
-/************************
- * Contract Interface
- * ********************** */
-
 
 
 /************************
