@@ -7,8 +7,9 @@ import {
 
 // NEAR types //
 type AccountId = string;
-type Balance = u128;
 type PublicKey = Uint8Array;
+
+export type RequestId = u32;
 
 class Option<T> {
   constructor(readonly value: T) {}
@@ -31,15 +32,9 @@ class Option<T> {
   }
 }
 
-// STORAGE //
-type StorageKey = string;
-const KEY_MULTI_SIG_CONTRACT: StorageKey = "multi_sig_contract";
-
 
 const DEFAULT_ALLOWANCE: u128 = u128.Zero;
 const REQUEST_COOLDOWN: u64 = 900_000_000_000;
-
-export type RequestId = u32;
 
 // @ts-ignore
 @nearBindgen
@@ -53,10 +48,6 @@ class FunctionCallPermission {
 class MultiSigRequestAction {
   constructor(readonly type: ActionType) {}
 }
-
-// interface MultiSigRequestAction {
-//   type(): ActionType;
-// }
 
 // @ts-ignore
 @nearBindgen
@@ -122,7 +113,7 @@ class FunctionCallAction extends MultiSigRequestAction {
 
   constructor(
     readonly method_name: string,
-    readonly args: undefined,
+    readonly args: Uint8Array,
     readonly deposit: u128,
     readonly gas: u64
   ) {
@@ -179,6 +170,12 @@ export class MultiSigContract {
   num_requests_pk: Map < PublicKey, u32 >
   // per_key
   active_requests_limit: u32
+  constructor() {
+    this.requests = new Map < RequestId,
+    MultiSigRequestWithSigner >();
+    this.confirmations = new Map < RequestId, Set < PublicKey >>()
+    this.num_requests_pk = new Map < PublicKey, u32 >()
+  }
 
   @mutateState()
   add_request(request: MultiSigRequest): RequestId {
@@ -213,33 +210,30 @@ export class MultiSigContract {
 
   @mutateState()
   execute_request(request: MultiSigRequest): ContractPromiseBatch  {
-    let promise = ContractPromiseBatch.create(request.receiver_id);
     let receiver_id = request.receiver_id;
     let num_actions = request.actions.length;
-    
-    request.actions.forEach((action) => {
+    let promise = ContractPromiseBatch.create(receiver_id);    
+
+    for(let i = 0; i < num_actions; i ++ ) {
+      let action = request.actions[i];
       switch (action.type) {
         case ActionType.Transfer: {
-          let amount: Balance;
-          ({amount} = (action as TransferAction));
+          let amount = (action as TransferAction).amount;
           promise = promise.transfer(amount);
         }
         case ActionType.CreateAccount: {
+          // let thisAction = (action as CreateAccountAction)
           promise = promise.create_account();
         }
         case ActionType.DeployContract: {
-          let code: Uint8Array;
-          ({code } = (action as DeployContractAction));
+          let code = (action as DeployContractAction).code;
           promise = promise.deploy_contract(code);
         }
         case ActionType.AddKey: {
-          let public_key: PublicKey;
-          let permission: Option<FunctionCallPermission>;
+          let thisAction = (action as AddKeyAction);
+          let public_key = thisAction.public_key;
+          let permission = thisAction.permission;
           
-          ({
-            public_key,
-            permission
-          } = (action as AddKeyAction));
           this.assert_self_request(receiver_id);
           if (permission.is_some()) {
             promise = promise.add_access_key(
@@ -253,8 +247,7 @@ export class MultiSigContract {
           }
         }
         case ActionType.DeleteKey: {
-          let public_key: PublicKey
-          ({public_key} = (action as DeleteKeyAction));
+          let public_key = (action as DeleteKeyAction).public_key;
           this.assert_self_request(receiver_id);
           let pk: PublicKey = public_key;
           let request_ids: Array<u32> = [];
@@ -275,36 +268,27 @@ export class MultiSigContract {
           promise = promise.delete_key(pk);
         }
         case ActionType.FunctionCall: {
-          let method_name: string;
-          let args: undefined;
-          let deposit: u128;
-          let gas: number;
-          ({
-            method_name,
-            args,
-            deposit,
-            gas,
-          } = (action as FunctionCallAction));
+          let thisAction = (action as FunctionCallAction);
+          let method_name: string = thisAction.method_name;
+          let args = thisAction.args;
+          let deposit: u128 = thisAction.deposit;
+          let gas: u64 = thisAction.gas;
           promise = promise.function_call(method_name, args, deposit, gas);
         }
         case ActionType.SetNumConfirmations: {
-          let num_confirmations: u32;
-          ({
-            num_confirmations 
-          } = (action as SetNumConfirmationsAction));
+          let num_confirmations = (action as SetNumConfirmationsAction).num_confirmations;
           this.assert_one_action_only(receiver_id, num_actions);
           this.num_confirmations = num_confirmations;
           return promise;
         }
         case ActionType.SetActiveRequestsLimit: {
-          let active_request_limit: u32;
-          ({active_request_limit} = (action as SetActiveRequestsLimitAction));
+          let active_request_limit: u32 = (action as SetActiveRequestsLimitAction).active_request_limit;
           this.assert_one_action_only(receiver_id, num_actions);
           this.active_requests_limit = active_request_limit;
           return promise;
         }
       }
-    });
+    }
     return promise;
   }
 
@@ -316,12 +300,13 @@ export class MultiSigContract {
     let signer_acount_pk = base58.decode(context.senderPublicKey);
     let confirmations = this.confirmations.get(request_id);
     assert(!confirmations.has(signer_acount_pk), "Already confirmed this request from this key");
-    if (confirmations.size + 1 >= this.num_confirmations) { // why not just c.size > this.n_c ? (vs +1 >=) -T
-      let request = this.remove_request(request_id);
+    if (<u32>(confirmations.size + 1) >= this.num_confirmations) { // why not just c.size > this.n_c ? (vs +1 >=) -T
+      // let request = this.remove_request(request_id);
       /********************************
       NOTE: If the tx execution fails for any reason, the request and confirmations are removed already, so the client has to start all over
       ********************************/
-      return this.execute_request(request);
+      // return this.execute_request(request);
+      return new ContractPromiseBatch()
     } else {
       confirmations.add(signer_acount_pk);
       this.confirmations.set(request_id, confirmations);
@@ -329,29 +314,29 @@ export class MultiSigContract {
     }
   }
 
-  /********************************
-  Helper methods
-  ********************************/
+  // /********************************
+  // Helper methods
+  // ********************************/
 
-  // removes request, removes confirmations and reduces num_requests_pk - used in delete, delete_key, and confirm
-  @mutateState()
-  remove_request(request_id: RequestId): MultiSigRequest {
-    // remove confirmations for this request
-    this.confirmations.delete(request_id);
-    let request_with_signer = this.requests.get(request_id);
-    assert((request_with_signer), "Failed to remove existing element");
-    // remove the original request
-    this.requests.delete(request_id);
-    // decrement num requests for original request signer
-    let original_signer_pk = request_with_signer.signer_pk;
-    let num_requests = this.num_requests_pk.get(original_signer_pk)
-    if (num_requests > 0) {
-      num_requests = num_requests - 1;
-    }
-    this.num_requests_pk.set(original_signer_pk, num_requests);
-    // return request
-    return request_with_signer.request;
-  }
+  // // removes request, removes confirmations and reduces num_requests_pk - used in delete, delete_key, and confirm
+  // @mutateState()
+  // remove_request(request_id: RequestId): MultiSigRequest {
+  //   // remove confirmations for this request
+  //   this.confirmations.delete(request_id);
+  //   let request_with_signer = this.requests.get(request_id);
+  //   assert((request_with_signer), "Failed to remove existing element");
+  //   // remove the original request
+  //   this.requests.delete(request_id);
+  //   // decrement num requests for original request signer
+  //   let original_signer_pk = request_with_signer.signer_pk;
+  //   let num_requests = this.num_requests_pk.get(original_signer_pk)
+  //   if (num_requests > 0) {
+  //     num_requests = num_requests - 1;
+  //   }
+  //   this.num_requests_pk.set(original_signer_pk, num_requests);
+  //   // return request
+  //   return request_with_signer.request;
+  // }
 
   private assert_valid_request(request_id: RequestId): void {
     assert(context.contractName == context.predecessor, "Predecessor account must be current account");
