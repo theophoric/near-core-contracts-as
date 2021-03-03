@@ -66,9 +66,9 @@ export type NumStakeShares = Balance;
 @nearBindgen
 class Account {
   constructor(
-    public unstaked: Balance,
-    public stake_shares: NumStakeShares,
-    public unstaked_available_epoch_height: EpochHeight,
+    public unstaked: Balance = u128.Zero,
+    public stake_shares: NumStakeShares = u128.Zero,
+    public unstaked_available_epoch_height: EpochHeight = 0,
   ){}
 }
 
@@ -335,7 +335,7 @@ export class StakingContract {
     let keys = this.accounts.keys();
     let accounts: Array < HumanReadableAccount > = [];
     for (let i = from_index; i < min(from_index + limit, keys.length); i++) {
-      accounts.push(this.get_account(keys[i]))
+      accounts.push(this.get_account(keys[<i32>i]))
     }
     return accounts;
   }
@@ -402,7 +402,8 @@ export class StakingContract {
     );
     
     // let ext = new ExtVoting(voting_account_id);
-    return ContractPromiseBatch.create("something")//ext.vote(is_vote);
+    // return ext.vote(is_vote);
+    return ContractPromiseBatch.create("tesT")
   }
 
   /// Owner's method.
@@ -440,9 +441,10 @@ export class StakingContract {
 
     ContractPromiseBatch.create(context.contractName)
       .stake(this.total_staked_balance, this.stake_public_key)
+      // NOTE :: THIS IS BROKEN
       .function_call(
-        this.on_stake_action.name,
-        {},
+        "on_stake_action",
+        new Args(),
         NO_DEPOSIT,
         ON_STAKE_ACTION_GAS
       );
@@ -455,7 +457,7 @@ export class StakingContract {
     account.unstaked = u128.add(amount, account.unstaked);
     this.internal_save_account(account_id, account);
     this.last_total_balance = u128.add(this.last_total_balance, amount);
-    logging.log(account_id + " deposited " + amount + ". New unstaked balance is " + account.unstaked);
+    logging.log(account_id + " deposited " + amount.toString() + ". New unstaked balance is " + account.unstaked.toString());
     return amount;
   }
 
@@ -467,7 +469,7 @@ export class StakingContract {
     assert(account.unstaked_available_epoch_height <= context.epochHeight, "The unstaked balance is not yet available due to unstaking delay");
     account.unstaked = u128.sub(account.unstaked, amount);
     this.internal_save_account(account_id, account);
-    logging.log(account_id + " wutgdrawubg " + amount + ". New unstaked balance is " + account.unstaked);
+    logging.log(account_id + " wutgdrawubg " + amount.toString() + ". New unstaked balance is " + account.unstaked.toString());
     ContractPromiseBatch.create(account_id).transfer(amount);
     this.last_total_balance = u128.sub(this.last_total_balance, amount);
   }
@@ -512,10 +514,10 @@ export class StakingContract {
     this.total_stake_shares = u128.add(num_shares, this.total_stake_shares);
 
     logging.log(
-      account_id + " staking " + charge_amount + ". Received " + num_shares + " new staking shares. Total " + account.unstaked + " unstaked balance and " + account.stake_shares + " staking shares"
+      account_id + " staking " + charge_amount.toString() + ". Received " + num_shares.toString() + " new staking shares. Total " + account.unstaked.toString() + " unstaked balance and " + account.stake_shares.toString() + " staking shares"
     );
     logging.log(
-      "Contract total staked balance is " + this.total_staked_balance + ". Total number of shares" + this.total_stake_shares
+      "Contract total staked balance is " + this.total_staked_balance.toString() + ". Total number of shares" + this.total_stake_shares.toString()
     );
 
   }
@@ -563,8 +565,8 @@ export class StakingContract {
     this.total_staked_balance = u128.add(this.total_staked_balance, unstake_amount);
     this.total_stake_shares = u128.add(this.total_stake_shares, num_shares);
 
-    logging.log("@" + account_id + " unstaking " + receive_amount + ". Spent " + num_shares + " staking shares. Total " + account.unstaked + " unstaked balance and " + account.stake_shares + " staking shares");
-    logging.log("Contract total staked balance is " + this.total_staked_balance + ". Total number of shares " + this.total_stake_shares);
+    logging.log("@" + account_id + " unstaking " + receive_amount.toString() + ". Spent " + num_shares.toString() + " staking shares. Total " + account.unstaked.toString() + " unstaked balance and " + account.stake_shares.toString() + " staking shares");
+    logging.log("Contract total staked balance is " + this.total_staked_balance.toString() + ". Total number of shares " + this.total_stake_shares.toString());
   }
 
   protected assert_owner(): void {
@@ -615,10 +617,14 @@ export class StakingContract {
       // received any shares or not.
       this.total_staked_balance = u128.add(this.total_staked_balance, owners_fee);
 
-      logging.log("Epoch " + epoch_height + ": Contract received total rewards of " + total_reward + " tokens. New total staked balance is " + this.total_staked_balance + ". Total number of shares " + this.total_stake_shares)
+      logging.log(
+        "Epoch " + epoch_height.toString() + 
+        ": Contract received total rewards of " + total_reward.toString() + 
+        " tokens. New total staked balance is " + this.total_staked_balance.toString() + 
+        ". Total number of shares " + this.total_stake_shares.toString());
 
       if (num_shares > u128.Zero) {
-        logging.log("Total rewards fee is " + num_shares + "stake shares");
+        logging.log("Total rewards fee is " + num_shares.toString() + "stake shares");
       }
     }
 
@@ -708,7 +714,7 @@ export class StakingContract {
 
   /// Inner method to get the given account or a new default value account.
   protected internal_get_account(account_id: AccountId): Account {
-    return this.accounts.get(account_id) || {};
+    return this.accounts.get(account_id) || new Account();
   }
 
   /// Inner method to save the given account for a given account ID.
@@ -740,7 +746,7 @@ class RewardFeeFraction {
 }
 
 
-/************************
+/************************z
  * External Contracts
  * ********************** */
 
@@ -755,14 +761,20 @@ class RewardFeeFraction {
 
 // class ExtVoting extends ExtContract {
 //   vote(is_vote:bool): ContractPromiseBatch {
-//     return this.call(this.vote.name, new Arguments(is_vote), NO_DEPOSIT, VOTE_GAS);
+    
+//     return this.call(this.vote.name, new VoteArgs(is_vote), NO_DEPOSIT, VOTE_GAS);
 //   }
 // }
 
+@nearBindgen
+class Args {
+}
+
 // @nearBindgen
-// class Arguments {
-//   constructor(public is_vote: bool) {}
+// class VoteArgs {
+//   constructor(public is_vote:bool) {  } 
 // }
+
 
 // class SelfContract extends ExtContract {
 //   /// A callback to check the result of the staking action.
