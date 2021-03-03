@@ -442,8 +442,8 @@ export class StakingContract {
       .stake(this.total_staked_balance, this.stake_public_key)
       // NOTE :: THIS IS BROKEN
       .function_call(
-        SelfContract.ON_STAKE_ACTION_METHOD,
-        SelfContract.OnStakeActionArgs(),
+        ExtSelf.ON_STAKE_ACTION_METHOD,
+        ExtSelf.OnStakeActionArgs(),
         NO_DEPOSIT,
         ON_STAKE_ACTION_GAS
       );
@@ -775,7 +775,7 @@ class ExtVoting extends ExtContract {
 @nearBindgen
 class OnStakeActionArgs {}
 
-class SelfContract extends ExtContract {
+class ExtSelf extends ExtContract {
   /// A callback to check the result of the staking action.
   /// In case the stake amount is less than the minimum staking threshold, the staking action
   /// fails, and the stake amount is not changed. This might lead to inconsistent state and the
