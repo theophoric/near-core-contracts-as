@@ -7,10 +7,12 @@
   "scripts": {
     "dev": "watch -d -n 1 'clear && yarn test:unit'",
     "asp": "asp --verbose --nologo",
-    "build": "asb --target debug",
+    "build": "asb",
+    "build:debug": "asb --target debug",
     "build:multisig": "yarn build -d ./contracts/multisig",
     "build:voting": "yarn build -d ./contracts/voting",
     "build:staking-pool": "yarn build -d ./contracts/staking-pool",
+    "build:staking-pool-factory": "yarn build -d ./contracts/staking-pool-factory",
     "clean": "rm -rf ./out",
     "test": "yarn test:unit",
     "test:all": "yarn test && yarn test:simulate:runtime",
