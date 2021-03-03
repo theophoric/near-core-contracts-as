@@ -47,10 +47,6 @@ class Option<T> {
 }
 // STORAGE //
 
-type StorageKey = string;
-/// Key used to store the state of the contract.
-const STATE_KEY: StorageKey = "STATE";
-
 /// The amount of gas given to complete `vote` call.
 const VOTE_GAS: u64 = 100_000_000_000_000;
 
@@ -405,8 +401,8 @@ export class StakingContract {
       "Invalid voting account ID"
     );
     
-    let ext = new ExtVoting(voting_account_id);
-    return ext.vote(is_vote);
+    // let ext = new ExtVoting(voting_account_id);
+    return ContractPromiseBatch.create("something")//ext.vote(is_vote);
   }
 
   /// Owner's method.
@@ -748,28 +744,33 @@ class RewardFeeFraction {
  * External Contracts
  * ********************** */
 
-class ExtContract {
-  constructor(readonly ext_account_id: AccountId){}
+// class ExtContract {
+//   constructor(readonly ext_account_id: AccountId){}
   
-  protected call(method_name: string, args: Uint8Array, amount: u128, gas: number  ): ContractPromiseBatch {
-    return ContractPromiseBatch.create(this.ext_account_id).function_call(method_name, args, amount, gas)
-  }
+//   protected call<T>(method_name: string, args: T, amount: u128, gas: number  ): ContractPromiseBatch {
+//     return ContractPromiseBatch.create(this.ext_account_id)//.function_call(method_name, args, amount, gas)
+//   }
 
-}
+// }
 
-class ExtVoting extends ExtContract {
-  vote(is_vote:bool): ContractPromiseBatch {
-    return this.call(this.vote.name, encode({is_vote}), NO_DEPOSIT, VOTE_GAS);
-  }
-}
+// class ExtVoting extends ExtContract {
+//   vote(is_vote:bool): ContractPromiseBatch {
+//     return this.call(this.vote.name, new Arguments(is_vote), NO_DEPOSIT, VOTE_GAS);
+//   }
+// }
 
-class SelfContract extends ExtContract {
-  /// A callback to check the result of the staking action.
-  /// In case the stake amount is less than the minimum staking threshold, the staking action
-  /// fails, and the stake amount is not changed. This might lead to inconsistent state and the
-  /// follow withdraw calls might fail. To mitigate this, the contract will issue a new unstaking
-  /// action in case of the failure of the first staking action.
-  on_stake_action(): ContractPromiseBatch {
-    return this.call(this.on_stake_action.name, new Uint8Array(0), NO_DEPOSIT, ON_STAKE_ACTION_GAS);
-  }
-}
+// @nearBindgen
+// class Arguments {
+//   constructor(public is_vote: bool) {}
+// }
+
+// class SelfContract extends ExtContract {
+//   /// A callback to check the result of the staking action.
+//   /// In case the stake amount is less than the minimum staking threshold, the staking action
+//   /// fails, and the stake amount is not changed. This might lead to inconsistent state and the
+//   /// follow withdraw calls might fail. To mitigate this, the contract will issue a new unstaking
+//   /// action in case of the failure of the first staking action.
+//   on_stake_action(): ContractPromiseBatch {
+//     // return this.call(this.on_stake_action.name, new Uint8Array(0), NO_DEPOSIT, ON_STAKE_ACTION_GAS);
+//   }
+// }

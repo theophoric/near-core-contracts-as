@@ -301,11 +301,11 @@ export class MultiSigContract {
     let confirmations = this.confirmations.get(request_id);
     assert(!confirmations.has(signer_acount_pk), "Already confirmed this request from this key");
     if (<u32>(confirmations.size + 1) >= this.num_confirmations) { // why not just c.size > this.n_c ? (vs +1 >=) -T
-      // let request = this.remove_request(request_id);
+      let request = this.remove_request(request_id);
       /********************************
       NOTE: If the tx execution fails for any reason, the request and confirmations are removed already, so the client has to start all over
       ********************************/
-      // return this.execute_request(request);
+      return this.execute_request(request);
       return new ContractPromiseBatch()
     } else {
       confirmations.add(signer_acount_pk);
@@ -318,25 +318,25 @@ export class MultiSigContract {
   // Helper methods
   // ********************************/
 
-  // // removes request, removes confirmations and reduces num_requests_pk - used in delete, delete_key, and confirm
-  // @mutateState()
-  // remove_request(request_id: RequestId): MultiSigRequest {
-  //   // remove confirmations for this request
-  //   this.confirmations.delete(request_id);
-  //   let request_with_signer = this.requests.get(request_id);
-  //   assert((request_with_signer), "Failed to remove existing element");
-  //   // remove the original request
-  //   this.requests.delete(request_id);
-  //   // decrement num requests for original request signer
-  //   let original_signer_pk = request_with_signer.signer_pk;
-  //   let num_requests = this.num_requests_pk.get(original_signer_pk)
-  //   if (num_requests > 0) {
-  //     num_requests = num_requests - 1;
-  //   }
-  //   this.num_requests_pk.set(original_signer_pk, num_requests);
-  //   // return request
-  //   return request_with_signer.request;
-  // }
+  // removes request, removes confirmations and reduces num_requests_pk - used in delete, delete_key, and confirm
+  @mutateState()
+  remove_request(request_id: RequestId): MultiSigRequest {
+    // remove confirmations for this request
+    this.confirmations.delete(request_id);
+    let request_with_signer = this.requests.get(request_id);
+    assert((request_with_signer), "Failed to remove existing element");
+    // remove the original request
+    this.requests.delete(request_id);
+    // decrement num requests for original request signer
+    let original_signer_pk = request_with_signer.signer_pk;
+    let num_requests = this.num_requests_pk.get(original_signer_pk)
+    if (num_requests > 0) {
+      num_requests = num_requests - 1;
+    }
+    this.num_requests_pk.set(original_signer_pk, num_requests);
+    // return request
+    return request_with_signer.request;
+  }
 
   private assert_valid_request(request_id: RequestId): void {
     assert(context.contractName == context.predecessor, "Predecessor account must be current account");
