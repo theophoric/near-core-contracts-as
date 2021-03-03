@@ -13,6 +13,7 @@ type WrappedTimestamp = u64;
 
 class Option<T> {
   constructor(readonly value: T) {}
+  
   is_some(): bool {
     return (!this.is_none());
   }
@@ -48,7 +49,7 @@ export class VotingContract {
   constructor() {
     this.votes = new Map<AccountId, Balance>();
     this.total_voted_stake = u128.Zero;
-    this.result = new Option(0); // 0 is interpreted as "none"
+    this.result = new Option(0); // new Option(0); // 0 is interpreted as "none"
     this.last_epoch_height = 0;
   }
 
@@ -64,7 +65,9 @@ export class VotingContract {
       let account_ids = this.votes.keys();
       for (let i = 0; i < account_ids.length; i ++ ) {
         let account_id = account_ids[i];
-        let account_current_stake = env.validator_stake(account_id);
+        // NOTE :: env.validator_stake currently causes a compile time error for all values.
+        // let account_current_stake = env.validator_stake(account_id);
+        let account_current_stake = u128.One;
         if (account_current_stake > u128.Zero) {
           this.votes.set(account_id, account_current_stake);
         }
@@ -109,7 +112,9 @@ export class VotingContract {
     let account_stake: u128;
 
     if (is_vote) {
-      let stake = env.validator_stake(account_id);
+      // NOTE :: env.validator_stake currently causes a compile time error for all values.
+      // let stake = env.validator_stake(account_id);
+      let stake = u128.One;
       assert(stake > u128.Zero, account_id + "is not a validator");
       account_stake = stake;
     } else {
