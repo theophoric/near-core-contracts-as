@@ -3,7 +3,6 @@ import {
   context,
   base58,
   ContractPromiseBatch,
-  logging,
 } from 'near-sdk-as';
 
 // NEAR types //

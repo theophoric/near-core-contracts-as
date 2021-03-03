@@ -356,7 +356,7 @@ export class StakingContract {
       "Contract expected a result on the callback"
     );
 
-    let stake_action_succeeded = (env.promise_result(ATOMIC_OP_REGISTER, 0) == PromiseResult.Successful);
+    let stake_action_succeeded = (env.promise_result(0, ATOMIC_OP_REGISTER) == PromiseResult.Successful);
     if (!stake_action_succeeded &&context.accountLockedBalance > u128.Zero) {
       ContractPromiseBatch.create(context.contractName).stake(u128.Zero, this.stake_public_key);
     }
