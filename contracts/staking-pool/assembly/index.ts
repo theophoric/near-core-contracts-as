@@ -442,8 +442,8 @@ export class StakingContract {
       .stake(this.total_staked_balance, this.stake_public_key)
       // NOTE :: THIS IS BROKEN
       .function_call(
-        "on_stake_action",
-        new Args(),
+        SelfContract.ON_STAKE_ACTION_METHOD,
+        SelfContract.OnStakeActionArgs(),
         NO_DEPOSIT,
         ON_STAKE_ACTION_GAS
       );
@@ -757,30 +757,35 @@ class ExtContract {
   }
 
 }
-
-class ExtVoting extends ExtContract {
-  vote(is_vote:bool): ContractPromiseBatch {
-    return this.call(this.vote.name, new VoteArgs(is_vote), NO_DEPOSIT, VOTE_GAS);
-  }
-}
-
-@nearBindgen
-class Args {
-}
-
 @nearBindgen
 class VoteArgs {
   constructor(public is_vote:bool) {  } 
 }
+class ExtVoting extends ExtContract {
+  static readonly VOTE_METHOD: string = "vote";
+  static VoteArgs(is_vote: bool): VoteArgs {
+    return {is_vote}
+  }
 
+  vote(is_vote:bool): ContractPromiseBatch {
+    return this.call(ExtVoting.VOTE_METHOD, ExtVoting.VoteArgs(is_vote), NO_DEPOSIT, VOTE_GAS);
+  }
+}
 
-// class SelfContract extends ExtContract {
-//   /// A callback to check the result of the staking action.
-//   /// In case the stake amount is less than the minimum staking threshold, the staking action
-//   /// fails, and the stake amount is not changed. This might lead to inconsistent state and the
-//   /// follow withdraw calls might fail. To mitigate this, the contract will issue a new unstaking
-//   /// action in case of the failure of the first staking action.
-//   on_stake_action(): ContractPromiseBatch {
-//     // return this.call(this.on_stake_action.name, new Uint8Array(0), NO_DEPOSIT, ON_STAKE_ACTION_GAS);
-//   }
-// }
+@nearBindgen
+class OnStakeActionArgs {}
+
+class SelfContract extends ExtContract {
+  /// A callback to check the result of the staking action.
+  /// In case the stake amount is less than the minimum staking threshold, the staking action
+  /// fails, and the stake amount is not changed. This might lead to inconsistent state and the
+  /// follow withdraw calls might fail. To mitigate this, the contract will issue a new unstaking
+  /// action in case of the failure of the first staking action.
+  static readonly ON_STAKE_ACTION_METHOD: string = "on_stake_action";
+  static OnStakeActionArgs(): OnStakeActionArgs {
+    return {}
+  }
+  // on_stake_action(): ContractPromiseBatch {
+  //   // return this.call(this.on_stake_action.name, new Uint8Array(0), NO_DEPOSIT, ON_STAKE_ACTION_GAS);
+  // }
+}

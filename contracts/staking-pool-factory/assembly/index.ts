@@ -124,7 +124,7 @@ export class StakingPoolFactory extends ContractBase {
             .deploy_contract(stakingPoolBin)
             .function_call(
                 ExtStakingPool.NEW_METHOD,
-                ExtStakingPool.newArgs(
+                ExtStakingPool.NewArgs(
                     owner_id,
                     stake_public_key,
                     reward_fee_fraction,
@@ -135,7 +135,7 @@ export class StakingPoolFactory extends ContractBase {
             .then(context.contractName)
             .function_call(
                 ExtSelf.ON_STAKING_POOL_CREATE_METHOD,
-                ExtSelf.onStakingPoolCreateArgs(
+                ExtSelf.OnStakingPoolCreateArgs(
                     staking_pool_account_id,
                     context.attachedDeposit,
                     context.predecessor
@@ -199,7 +199,7 @@ class SelfOnStakingPoolCreateArgs {
 // @nearBindgen
 class ExtSelf { // extends ExtContract{
     static readonly ON_STAKING_POOL_CREATE_METHOD: string = "on_staking_pool_create";
-    static onStakingPoolCreateArgs(
+    static OnStakingPoolCreateArgs(
         staking_pool_account_id: AccountId, 
         attached_deposit: u128, 
         predecessor_account_id: AccountId
@@ -221,7 +221,7 @@ class StakingPoolNewArgs {
 
 class ExtStakingPool {
     static readonly NEW_METHOD:string = "new";
-    static newArgs(owner_id: AccountId, stake_public_key: Base58PublicKey, reward_fee_fraction: RewardFeeFraction): StakingPoolNewArgs {
+    static NewArgs(owner_id: AccountId, stake_public_key: Base58PublicKey, reward_fee_fraction: RewardFeeFraction): StakingPoolNewArgs {
         return {
             owner_id,
             stake_public_key,
@@ -239,14 +239,14 @@ class WhitelistAddStakingPoolArgs {
 
 class ExtWhitelist extends ExtContract {
     static readonly ADD_STAKING_POOL_METHOD: string = "add_staking_pool";
-    static addStakingPoolArgs(staking_pool_account_id: AccountId): WhitelistAddStakingPoolArgs {
+    static AddStakingPoolArgs(staking_pool_account_id: AccountId): WhitelistAddStakingPoolArgs {
         return {staking_pool_account_id}
     }
     constructor(accountId: AccountId) {super(accountId)}
     add_staking_pool(staking_pool_account_id: AccountId): ContractPromiseBatch {
         return this.call(
             ExtWhitelist.ADD_STAKING_POOL_METHOD,
-            ExtWhitelist.addStakingPoolArgs(staking_pool_account_id),
+            ExtWhitelist.AddStakingPoolArgs(staking_pool_account_id),
             u128.Zero,
             GasPrices.WHITELIST_STAKING_POOL );
     }
