@@ -3,6 +3,7 @@ import {
   context,
   base58,
   ContractPromiseBatch,
+  logging,
 } from 'near-sdk-as';
 
 // NEAR types //
@@ -43,10 +44,14 @@ class FunctionCallPermission {
   receiver_id: AccountId
   method_names: Array < string >
 }
-// @ts-ignore
-@nearBindgen
+
+// NOTE :: Interfaces are only supported with getter/setter in AS -- but Getters / setters are not supported in nearBindgen
+// interface MultiSigRequestAction {
+//   actionType: ActionType
+// }
+
 class MultiSigRequestAction {
-  constructor(readonly type: ActionType) {}
+  constructor(public readonly _type: ActionType) {}
 }
 
 // @ts-ignore
@@ -92,19 +97,13 @@ class AddKeyAction extends MultiSigRequestAction {
   constructor(
     readonly public_key: PublicKey,
     readonly permission: Option < FunctionCallPermission >
-  ) {
-    super(ActionType.AddKey);
-  }
+  ) {super(ActionType.AddKey);}
 }
 
 // @ts-ignore
 @nearBindgen
 class DeleteKeyAction extends MultiSigRequestAction {
-  constructor(
-    readonly public_key: PublicKey
-  ) {
-    super(ActionType.DeleteKey);
-  }
+  constructor(readonly public_key: PublicKey) {super(ActionType.DeleteKey);}
 }
 
 // @ts-ignore
@@ -116,30 +115,20 @@ class FunctionCallAction extends MultiSigRequestAction {
     readonly args: Uint8Array,
     readonly deposit: u128,
     readonly gas: u64
-  ) {
-    super(ActionType.FunctionCall);
-  }
+  ) {super(ActionType.FunctionCall);}
 
 }
 // @ts-ignore
 @nearBindgen
 class SetNumConfirmationsAction extends MultiSigRequestAction {
-  constructor(
-    readonly num_confirmations: u32
-  ) {
-    super(ActionType.SetNumConfirmations);
-  }
+  constructor(readonly num_confirmations: u32) {super(ActionType.SetNumConfirmations);}
 }
 @nearBindgen
 class SetActiveRequestsLimitAction extends MultiSigRequestAction {
-  constructor(
-    readonly active_request_limit: u32
-  ) {
-    super(ActionType.SetActiveRequestsLimit);
-  }
+  constructor(readonly active_request_limit: u32) {super(ActionType.SetActiveRequestsLimit);}
 }
 @nearBindgen
-class MultiSigRequest {
+class MultiSigRequest  {
   receiver_id: AccountId
   actions: MultiSigRequestAction[]
 }
@@ -151,11 +140,6 @@ class MultiSigRequestWithSigner {
   added_timestamp: u64
 }
 
-// @nearBindgen
-// abstract class BaseContract {
-//   abstract persist(): void
-//   constructor(readonly key: StorageKey) {}
-// }
 /*****************************
  * MAIN CONTRACT CLASS
  ***************************** */
@@ -216,7 +200,7 @@ export class MultiSigContract {
 
     for(let i = 0; i < num_actions; i ++ ) {
       let action = request.actions[i];
-      switch (action.type) {
+      switch (action._type) {
         case ActionType.Transfer: {
           let amount = (action as TransferAction).amount;
           promise = promise.transfer(amount);
@@ -306,7 +290,6 @@ export class MultiSigContract {
       NOTE: If the tx execution fails for any reason, the request and confirmations are removed already, so the client has to start all over
       ********************************/
       return this.execute_request(request);
-      return new ContractPromiseBatch()
     } else {
       confirmations.add(signer_acount_pk);
       this.confirmations.set(request_id, confirmations);
