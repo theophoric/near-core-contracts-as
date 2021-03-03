@@ -401,9 +401,8 @@ export class StakingContract {
       "Invalid voting account ID"
     );
     
-    // let ext = new ExtVoting(voting_account_id);
-    // return ext.vote(is_vote);
-    return ContractPromiseBatch.create("tesT")
+    let ext = new ExtVoting(voting_account_id);
+    return ext.vote(is_vote);
   }
 
   /// Owner's method.
@@ -750,30 +749,29 @@ class RewardFeeFraction {
  * External Contracts
  * ********************** */
 
-// class ExtContract {
-//   constructor(readonly ext_account_id: AccountId){}
+class ExtContract {
+  constructor(readonly ext_account_id: AccountId){}
   
-//   protected call<T>(method_name: string, args: T, amount: u128, gas: number  ): ContractPromiseBatch {
-//     return ContractPromiseBatch.create(this.ext_account_id)//.function_call(method_name, args, amount, gas)
-//   }
+  protected call<T>(method_name: string, args: T, amount: u128, gas: u64  ): ContractPromiseBatch {
+    return ContractPromiseBatch.create(this.ext_account_id).function_call(method_name, args, amount, gas)
+  }
 
-// }
+}
 
-// class ExtVoting extends ExtContract {
-//   vote(is_vote:bool): ContractPromiseBatch {
-    
-//     return this.call(this.vote.name, new VoteArgs(is_vote), NO_DEPOSIT, VOTE_GAS);
-//   }
-// }
+class ExtVoting extends ExtContract {
+  vote(is_vote:bool): ContractPromiseBatch {
+    return this.call(this.vote.name, new VoteArgs(is_vote), NO_DEPOSIT, VOTE_GAS);
+  }
+}
 
 @nearBindgen
 class Args {
 }
 
-// @nearBindgen
-// class VoteArgs {
-//   constructor(public is_vote:bool) {  } 
-// }
+@nearBindgen
+class VoteArgs {
+  constructor(public is_vote:bool) {  } 
+}
 
 
 // class SelfContract extends ExtContract {

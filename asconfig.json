@@ -1,0 +1,10 @@
+
+{
+    "workspaces": [
+      "contracts/multisig",
+      "contracts/voting",
+      "contracts/staking-pool"
+    ],
+    "in-progress": [
+    ]
+  }

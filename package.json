@@ -1,25 +1,23 @@
 {
-  "name": "near-core-as",
+  "name": "near-core-contracts-as",
   "version": "0.0.1",
   "description": "Core near contracts in assembly script",
   "author": "theophoric",
   "license": "(MIT AND Apache-2.0)",
   "scripts": {
-    "build": "yarn build:all",
-    "build:all": "node ./contracts/compile.js",
-    "build:multisig": "asb ./contracts/multisig/main.ts",
-    "build:voting": "asb ./contracts/voting/main.ts",
-    "build:staking-pool": "asb ./contracts/staking-pool/main.ts",
+    "dev": "watch -d -n 1 'clear && yarn test:unit'",
+    "asp": "asp --verbose --nologo",
+    "build": "asb --target debug",
+    "build:multisig": "yarn build -d ./contracts/multisig",
+    "build:voting": "yarn build -d ./contracts/voting",
+    "build:staking-pool": "yarn build -d ./contracts/staking-pool",
     "clean": "rm -rf ./out",
     "test": "yarn test:unit",
     "test:all": "yarn test && yarn test:simulate:runtime",
-    "test:unit": "asp --verbose --nologo -c contracts/as-pect.config.js -f unit.spec",
-    "test:simulate:runtime": "yarn build && jest --verbose -f simulate.spec"
+    "test:unit": "asp --verbose --nologo -c contracts/as-pect.config.js -f unit.spec"
   },
   "devDependencies": {
-    "jest": "^26.6.3",
-    "near-sdk-as": "^2.2.0",
-    "near-shell": "^0.24.9"
+    "near-sdk-as": "^2.2.0"
   },
   "engines": {
     "node": ">=12.0.0"
