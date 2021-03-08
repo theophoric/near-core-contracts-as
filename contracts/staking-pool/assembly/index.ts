@@ -764,7 +764,7 @@ class VoteArgs {
 class ExtVoting extends ExtContract {
   static readonly VOTE_METHOD: string = "vote";
   static VoteArgs(is_vote: bool): VoteArgs {
-    return {is_vote}
+    return new VoteArgs(is_vote)
   }
 
   vote(is_vote:bool): ContractPromiseBatch {
